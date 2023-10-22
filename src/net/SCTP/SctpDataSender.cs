@@ -160,7 +160,7 @@ namespace SIPSorcery.Net
         /// <summary>
         /// The total size (in bytes) of queued user data that will be sent to the peer.
         /// </summary>
-        public ulong BufferedAmount => (ulong)_sendQueue.Sum(x => x.UserData?.Length ?? 0);
+        public ulong BufferedAmount => (ulong)_sendQueue.Sum(x => x.UserData.Length);
 
         /// <summary>
         /// The Transaction Sequence Number (TSN) that will be used in the next DATA chunk sent.
@@ -306,7 +306,7 @@ namespace SIPSorcery.Net
         /// <param name="streamID">The stream ID to sent the data on.</param>
         /// <param name="ppid">The payload protocol ID for the data.</param>
         /// <param name="message">The byte data to send.</param>
-        public void SendData(ushort streamID, uint ppid, byte[] data)
+        public void SendData(ushort streamID, uint ppid, ReadOnlySpan<byte> data)
         {
             lock (_sendQueue)
             {
@@ -332,7 +332,7 @@ namespace SIPSorcery.Net
 
                     // Future TODO: Replace with slice when System.Memory is introduced as a dependency.
                     byte[] payload = new byte[payloadLength];
-                    Buffer.BlockCopy(data, offset, payload, 0, payloadLength);
+                    data.Slice(offset, payloadLength).CopyTo(payload);
 
                     bool isBegining = index == 0;
                     bool isEnd = ((offset + payloadLength) >= data.Length) ? true : false;
@@ -345,7 +345,7 @@ namespace SIPSorcery.Net
                         streamID,
                         seqnum,
                         ppid,
-                        payload);
+                        new ArraySegment<byte>(payload));
 
                     _sendQueue.Enqueue(dataChunk);
 

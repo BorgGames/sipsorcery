@@ -425,7 +425,7 @@ namespace SIPSorcery.Net
                         case SctpChunkType.DATA:
                             var dataChunk = chunk as SctpDataChunk;
 
-                            if (dataChunk.UserData == null || dataChunk.UserData.Length == 0)
+                            if (dataChunk.UserData.Length == 0)
                             {
                                 // Fatal condition:
                                 // - If an endpoint receives a DATA chunk with no user data (i.e., the
@@ -589,7 +589,7 @@ namespace SIPSorcery.Net
         /// <param name="streamID">The stream ID to sent the data on.</param>
         /// <param name="ppid">The payload protocol ID for the data.</param>
         /// <param name="message">The byte data to send.</param>
-        public void SendData(ushort streamID, uint ppid, byte[] data)
+        public void SendData(ushort streamID, uint ppid, ReadOnlySpan<byte> data)
         {
             if (_wasAborted)
             {

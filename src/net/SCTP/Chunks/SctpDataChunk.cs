@@ -78,10 +78,11 @@ namespace SIPSorcery.Net
         /// </summary>
         public uint PPID;
 
+        private ArraySegment<byte> userData;
         /// <summary>
         /// This is the payload user data.
         /// </summary>
-        public byte[] UserData;
+        public ReadOnlySpan<byte> UserData => userData;
 
         // These properties are used by the data sender.
         internal DateTime LastSentAt;
@@ -113,9 +114,9 @@ namespace SIPSorcery.Net
             ushort streamID, 
             ushort seqnum, 
             uint ppid, 
-            byte[] data) : base(SctpChunkType.DATA)
+            ArraySegment<byte> data) : base(SctpChunkType.DATA)
         {
-            if (data == null || data.Length == 0)
+            if (data == null || data.Count == 0)
             {
                 throw new ArgumentNullException("data", "The SctpDataChunk data parameter cannot be empty.");
             }
@@ -127,7 +128,7 @@ namespace SIPSorcery.Net
             StreamID = streamID;
             StreamSeqNum = seqnum; 
             PPID = ppid;
-            UserData = data;
+            userData = data;
 
             ChunkFlags = (byte)(
                 (Unordered ? 0x04 : 0x0) +
@@ -143,7 +144,7 @@ namespace SIPSorcery.Net
         public override ushort GetChunkLength(bool padded)
         {
             ushort len = SCTP_CHUNK_HEADER_LENGTH + FIXED_PARAMETERS_LENGTH;
-            len += (ushort)(UserData != null ? UserData.Length : 0);
+            len += (ushort)UserData.Length;
             return (padded) ? SctpPadding.PadTo4ByteBoundary(len) : len;
         }
 
@@ -168,17 +169,14 @@ namespace SIPSorcery.Net
 
             int userDataPosn = startPosn + FIXED_PARAMETERS_LENGTH;
 
-            if (UserData != null)
-            {
-                Buffer.BlockCopy(UserData, 0, buffer, userDataPosn, UserData.Length);
-            }
+            UserData.CopyTo(buffer.AsSpan(userDataPosn));
 
             return GetChunkLength(true);
         }
 
         public bool IsEmpty()
         {
-            return UserData == null;
+            return UserData.Length == 0;
         }
 
         /// <summary>
@@ -212,8 +210,8 @@ namespace SIPSorcery.Net
 
             if (userDataLen > 0)
             {
-                dataChunk.UserData = new byte[userDataLen];
-                Buffer.BlockCopy(buffer, userDataPosn, dataChunk.UserData, 0, dataChunk.UserData.Length);
+                dataChunk.userData = new ArraySegment<byte>(new byte[userDataLen]);
+                Buffer.BlockCopy(buffer, userDataPosn, dataChunk.userData.Array, dataChunk.userData.Offset, dataChunk.userData.Count);
             }
 
             return dataChunk;

@@ -280,7 +280,7 @@ namespace SIPSorcery.Net
                             dataChunk.StreamID,
                             dataChunk.StreamSeqNum,
                             dataChunk.PPID,
-                            dataChunk.UserData);
+                            dataChunk.UserData.ToArray());
                     }
                     else
                     {
@@ -519,7 +519,7 @@ namespace SIPSorcery.Net
                 while (tsn != afterEndTSN)
                 {
                     var fragment = fragments[tsn].UserData;
-                    Buffer.BlockCopy(fragment, 0, full, posn, fragment.Length);
+                    fragment.CopyTo(full.AsSpan(posn));
                     posn += fragment.Length;
                     fragments.Remove(tsn);
                     tsn++;

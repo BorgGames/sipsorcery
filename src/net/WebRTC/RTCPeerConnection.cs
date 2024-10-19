@@ -1806,9 +1806,9 @@ namespace SIPSorcery.Net
         /// <param name="alertLevel">The level of the alert: warning or critical.</param>
         /// <param name="alertType">The type of the alert.</param>
         /// <param name="alertDescription">An optional description for the alert.</param>
-        private void OnDtlsAlert(AlertLevelsEnum alertLevel, AlertTypesEnum alertType, string alertDescription)
+        private void OnDtlsAlert(DtlsAlertLevel alertLevel, DtlsAlertType alertType, string alertDescription)
         {
-            if (alertType == AlertTypesEnum.close_notify)
+            if (alertType == DtlsAlertType.CloseNotify)
             {
                 logger.LogDebug($"SCTP closing transport as a result of DTLS close notification.");
 

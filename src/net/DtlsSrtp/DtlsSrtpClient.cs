@@ -100,7 +100,7 @@ namespace SIPSorcery.Net
         ///  - alert type,
         ///  - alert description.
         /// </summary>
-        public event Action<AlertLevelsEnum, AlertTypesEnum, string> OnAlert;
+        public event Action<DtlsAlertLevel, DtlsAlertType, string> OnAlert;
 
         public DtlsSrtpClient(TlsCrypto crypto) :
             this(crypto, null, null, null)
@@ -391,7 +391,7 @@ namespace SIPSorcery.Net
             string alertMessage = $"{AlertLevel.GetText(alertLevel)}, {AlertDescription.GetText(alertDescription)}";
             alertMessage += !string.IsNullOrEmpty(description) ? $", {description}." : ".";
 
-            if (alertDescription == (byte)AlertTypesEnum.close_notify)
+            if (alertDescription == (byte)DtlsAlertType.CloseNotify)
             {
                 logger.LogDebug($"DTLS client raised close notification: {alertMessage}");
             }
@@ -424,20 +424,20 @@ namespace SIPSorcery.Net
         {
             string description = AlertDescription.GetText(alertDescription);
 
-            AlertLevelsEnum level = AlertLevelsEnum.Warning;
-            AlertTypesEnum alertType = AlertTypesEnum.unknown;
+            var level = DtlsAlertLevel.Warning;
+            var alertType = DtlsAlertType.Unknown;
 
-            if (Enum.IsDefined(typeof(AlertLevelsEnum), checked((byte)alertLevel)))
+            if (Enum.IsDefined(typeof(DtlsAlertLevel), checked((byte)alertLevel)))
             {
-                level = (AlertLevelsEnum)alertLevel;
+                level = (DtlsAlertLevel)alertLevel;
             }
 
-            if (Enum.IsDefined(typeof(AlertTypesEnum), checked((byte)alertDescription)))
+            if (Enum.IsDefined(typeof(DtlsAlertType), checked((byte)alertDescription)))
             {
-                alertType = (AlertTypesEnum)alertDescription;
+                alertType = (DtlsAlertType)alertDescription;
             }
 
-            if (alertType == AlertTypesEnum.close_notify)
+            if (alertType == DtlsAlertType.CloseNotify)
             {
                 logger.LogDebug($"DTLS client received close notification: {AlertLevel.GetText(alertLevel)}, {description}.");
             }

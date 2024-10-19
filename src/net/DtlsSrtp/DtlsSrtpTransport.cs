@@ -72,7 +72,7 @@ namespace SIPSorcery.Net
         ///  - alert type,
         ///  - alert description.
         /// </summary>
-        public event Action<AlertLevelsEnum, AlertTypesEnum, string> OnAlert;
+        public event Action<DtlsAlertLevel, DtlsAlertType, string> OnAlert;
 
         private System.DateTime _startTime = System.DateTime.MinValue;
         private Once _isClosed;

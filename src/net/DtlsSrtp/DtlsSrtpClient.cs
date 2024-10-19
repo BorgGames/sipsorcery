@@ -205,35 +205,17 @@ namespace SIPSorcery.Net
             clientSrtpData = new UseSrtpData(protectionProfiles, clientSrtpData.Mki);
         }
 
-        public virtual SrtpPolicy GetSrtpPolicy()
-        {
-            return srtpPolicy;
-        }
+        public virtual SrtpPolicy SrtpPolicy => srtpPolicy;
 
-        public virtual SrtpPolicy GetSrtcpPolicy()
-        {
-            return srtcpPolicy;
-        }
+        public virtual SrtpPolicy SrtcpPolicy => srtcpPolicy;
 
-        public virtual byte[] GetSrtpMasterServerKey()
-        {
-            return srtpMasterServerKey;
-        }
+        public virtual byte[] SrtpMasterServerKey => srtpMasterServerKey;
 
-        public virtual byte[] GetSrtpMasterServerSalt()
-        {
-            return srtpMasterServerSalt;
-        }
+        public virtual byte[] SrtpMasterServerSalt => srtpMasterServerSalt;
 
-        public virtual byte[] GetSrtpMasterClientKey()
-        {
-            return srtpMasterClientKey;
-        }
+        public virtual byte[] SrtpMasterClientKey => srtpMasterClientKey;
 
-        public virtual byte[] GetSrtpMasterClientSalt()
-        {
-            return srtpMasterClientSalt;
-        }
+        public virtual byte[] SrtpMasterClientSalt => srtpMasterClientSalt;
 
         public override TlsAuthentication GetAuthentication()
         {
@@ -252,10 +234,7 @@ namespace SIPSorcery.Net
             Buffer.BlockCopy(m_context.SecurityParameters.MasterSecret.Extract(), 0, masterSecret, 0, masterSecret.Length);
         }
 
-        public bool IsClient()
-        {
-            return true;
-        }
+        public bool IsClient => true;
 
         protected byte[] GetKeyingMaterial(int length)
         {
@@ -406,10 +385,7 @@ namespace SIPSorcery.Net
             base.NotifyServerVersion(serverVersion);
         }
 
-        public Certificate GetRemoteCertificate()
-        {
-            return ServerCertificate.Certificate;
-        }
+        public Certificate RemoteCertificate => ServerCertificate.Certificate;
 
         protected override ProtocolVersion[] GetSupportedVersions()
         {

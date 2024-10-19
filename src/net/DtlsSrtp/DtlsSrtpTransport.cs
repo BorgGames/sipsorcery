@@ -147,7 +147,7 @@ namespace SIPSorcery.Net
 
         public bool DoHandshake(out string handshakeError)
         {
-            if (connection.IsClient())
+            if (connection.IsClient)
             {
                 return DoHandshakeAsClient(out handshakeError);
             }
@@ -159,7 +159,7 @@ namespace SIPSorcery.Net
 
         public bool IsClient
         {
-            get { return connection.IsClient(); }
+            get { return connection.IsClient; }
         }
 
         private bool DoHandshakeAsClient(out string handshakeError)
@@ -183,7 +183,7 @@ namespace SIPSorcery.Net
                     // Prepare the shared key to be used in RTP streaming
                     //client.PrepareSrtpSharedSecret();
                     // Generate encoders for DTLS traffic
-                    if (client.GetSrtpPolicy() != null)
+                    if (client.SrtpPolicy != null)
                     {
                         srtpDecoder = GenerateRtpDecoder();
                         srtpEncoder = GenerateRtpEncoder();
@@ -249,7 +249,7 @@ namespace SIPSorcery.Net
                     // Prepare the shared key to be used in RTP streaming
                     //server.PrepareSrtpSharedSecret();
                     // Generate encoders for DTLS traffic
-                    if (server.GetSrtpPolicy() != null)
+                    if (server.SrtpPolicy != null)
                     {
                         srtpDecoder = GenerateRtpDecoder();
                         srtpEncoder = GenerateRtpEncoder();
@@ -295,60 +295,60 @@ namespace SIPSorcery.Net
 
         public Certificate GetRemoteCertificate()
         {
-            return connection.GetRemoteCertificate();
+            return connection.RemoteCertificate;
         }
 
         protected byte[] GetMasterServerKey()
         {
-            return connection.GetSrtpMasterServerKey();
+            return connection.SrtpMasterServerKey;
         }
 
         protected byte[] GetMasterServerSalt()
         {
-            return connection.GetSrtpMasterServerSalt();
+            return connection.SrtpMasterServerSalt;
         }
 
         protected byte[] GetMasterClientKey()
         {
-            return connection.GetSrtpMasterClientKey();
+            return connection.SrtpMasterClientKey;
         }
 
         protected byte[] GetMasterClientSalt()
         {
-            return connection.GetSrtpMasterClientSalt();
+            return connection.SrtpMasterClientSalt;
         }
 
         protected SrtpPolicy GetSrtpPolicy()
         {
-            return connection.GetSrtpPolicy();
+            return connection.SrtpPolicy;
         }
 
         protected SrtpPolicy GetSrtcpPolicy()
         {
-            return connection.GetSrtcpPolicy();
+            return connection.SrtcpPolicy;
         }
 
         protected IPacketTransformer GenerateRtpEncoder()
         {
-            return GenerateTransformer(connection.IsClient(), true);
+            return GenerateTransformer(connection.IsClient, true);
         }
 
         protected IPacketTransformer GenerateRtpDecoder()
         {
             //Generate the reverse result of "GenerateRtpEncoder"
-            return GenerateTransformer(!connection.IsClient(), true);
+            return GenerateTransformer(!connection.IsClient, true);
         }
 
         protected IPacketTransformer GenerateRtcpEncoder()
         {
             var isClient = connection is DtlsSrtpClient;
-            return GenerateTransformer(connection.IsClient(), false);
+            return GenerateTransformer(connection.IsClient, false);
         }
 
         protected IPacketTransformer GenerateRtcpDecoder()
         {
             //Generate the reverse result of "GenerateRctpEncoder"
-            return GenerateTransformer(!connection.IsClient(), false);
+            return GenerateTransformer(!connection.IsClient, false);
         }
 
         protected IPacketTransformer GenerateTransformer(bool isClient, bool isRtp)
@@ -574,7 +574,7 @@ namespace SIPSorcery.Net
 
                 if (millisecondsRemaining <= 0)
                 {
-                    logger.LogWarning($"DTLS transport timed out after {TimeoutMilliseconds}ms waiting for handshake from remote {(connection.IsClient() ? "server" : "client")}.");
+                    logger.LogWarning($"DTLS transport timed out after {TimeoutMilliseconds}ms waiting for handshake from remote {(connection.IsClient ? "server" : "client")}.");
                     throw new TimeoutException();
                 }
                 else if (!_isClosed.HasOccurred)

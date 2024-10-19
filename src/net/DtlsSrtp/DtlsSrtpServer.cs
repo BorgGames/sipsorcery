@@ -254,35 +254,17 @@ namespace SIPSorcery.Net
             serverSrtpData = new UseSrtpData(protectionProfiles, clientSrtpData.Mki);
         }
 
-        public SrtpPolicy GetSrtpPolicy()
-        {
-            return srtpPolicy;
-        }
+        public SrtpPolicy SrtpPolicy => srtpPolicy;
 
-        public SrtpPolicy GetSrtcpPolicy()
-        {
-            return srtcpPolicy;
-        }
+        public SrtpPolicy SrtcpPolicy => srtcpPolicy;
 
-        public byte[] GetSrtpMasterServerKey()
-        {
-            return srtpMasterServerKey;
-        }
+        public byte[] SrtpMasterServerKey => srtpMasterServerKey;
 
-        public byte[] GetSrtpMasterServerSalt()
-        {
-            return srtpMasterServerSalt;
-        }
+        public byte[] SrtpMasterServerSalt => srtpMasterServerSalt;
 
-        public byte[] GetSrtpMasterClientKey()
-        {
-            return srtpMasterClientKey;
-        }
+        public byte[] SrtpMasterClientKey => srtpMasterClientKey;
 
-        public byte[] GetSrtpMasterClientSalt()
-        {
-            return srtpMasterClientSalt;
-        }
+        public byte[] SrtpMasterClientSalt => srtpMasterClientSalt;
 
         public override void NotifyHandshakeComplete()
         {
@@ -294,10 +276,7 @@ namespace SIPSorcery.Net
 
         }
 
-        public bool IsClient()
-        {
-            return false;
-        }
+        public bool IsClient => false;
 
         protected override TlsCredentialedSigner GetECDsaSignerCredentials()
         {
@@ -428,10 +407,7 @@ namespace SIPSorcery.Net
             return ForceUseExtendedMasterSecret;
         }
 
-        public Certificate GetRemoteCertificate()
-        {
-            return ClientCertificate;
-        }
+        public Certificate RemoteCertificate => ClientCertificate;
 
         protected override ProtocolVersion[] GetSupportedVersions()
         {

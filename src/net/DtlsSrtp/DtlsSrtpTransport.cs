@@ -242,7 +242,7 @@ namespace SIPSorcery.Net
                 DtlsServerProtocol serverProtocol = new DtlsServerProtocol();
                 try
                 {
-                    var server = (DtlsSrtpServer)connection;
+                    var server = (DtlsSrtpHost)connection;
 
                     // Perform the handshake in a non-blocking fashion
                     Transport = serverProtocol.Accept(server, this);

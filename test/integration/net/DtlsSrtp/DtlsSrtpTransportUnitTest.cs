@@ -103,7 +103,7 @@ namespace SIPSorcery.Net.IntegrationTests
             //logger.LogDebug($"DTLS server client fingerprint: {dtlsServer.ClientFingerprint}.");
 
             Assert.NotNull(dtlsClient.RemoteCertificate);
-            Assert.NotNull(dtlsServer.GetRemoteCertificate());
+            Assert.NotNull(dtlsServer.RemoteCertificate);
             //Assert.Equal(dtlsServer.Fingerprint.algorithm, dtlsClient.ServerFingerprint.algorithm);
             //Assert.Equal(dtlsServer.Fingerprint.value, dtlsClient.ServerFingerprint.value);
             //Assert.Equal(dtlsClient.Fingerprint.algorithm, dtlsServer.ClientFingerprint.algorithm);

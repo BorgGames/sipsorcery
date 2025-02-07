@@ -15,6 +15,7 @@
 
 using System;
 using System.Collections;
+using System.Linq;
 using Microsoft.Extensions.Logging;
 using Org.BouncyCastle.Tls;
 using Org.BouncyCastle.Security;
@@ -47,14 +48,14 @@ namespace SIPSorcery.Net
         public virtual TlsCredentials GetClientCredentials(CertificateRequest certificateRequest)
         {
             short[] certificateTypes = certificateRequest.CertificateTypes;
-            if (certificateTypes == null || !Arrays.Contains(certificateTypes, ClientCertificateType.rsa_sign))
+            if (certificateTypes == null || !Arrays.Contains(certificateTypes, ClientCertificateType.ecdsa_sign))
             {
                 return null;
             }
 
             return DtlsUtils.LoadSignerCredentials(mContext,
                 certificateRequest.SupportedSignatureAlgorithms,
-                SignatureAlgorithm.rsa,
+                SignatureAlgorithm.ecdsa,
                 mClient.mCertificateChain,
                 mClient.mPrivateKey);
         }
@@ -184,21 +185,13 @@ namespace SIPSorcery.Net
             int chosenProfile = SrtpProtectionProfile.SRTP_AES128_CM_HMAC_SHA1_80;
             clientSrtpData = TlsSrtpUtilities.GetUseSrtpExtension(serverExtensions);
 
-            foreach (int profile in clientSrtpData.ProtectionProfiles)
-            {
-                switch (profile)
-                {
-                    case SrtpProtectionProfile.SRTP_AES128_CM_HMAC_SHA1_32:
-                    case SrtpProtectionProfile.SRTP_AES128_CM_HMAC_SHA1_80:
-                    case SrtpProtectionProfile.SRTP_NULL_HMAC_SHA1_32:
-                    case SrtpProtectionProfile.SRTP_NULL_HMAC_SHA1_80:
-                        chosenProfile = profile;
-                        break;
-                }
-            }
-
             // server chooses a mutually supported SRTP protection profile
             // http://tools.ietf.org/html/draft-ietf-avt-dtls-srtp-07#section-4.1.2
+            if (!clientSrtpData.ProtectionProfiles.Contains(chosenProfile))
+            {
+                throw new TlsFatalAlert(AlertDescription.handshake_failure, "Server must support SRTP_AEAD_AES_128_GCM");
+            }
+
             int[] protectionProfiles = { chosenProfile };
 
             // server agrees to use the MKI offered by the client
@@ -387,13 +380,14 @@ namespace SIPSorcery.Net
 
         public Certificate RemoteCertificate => ServerCertificate.Certificate;
 
-        protected override ProtocolVersion[] GetSupportedVersions()
+        protected override ProtocolVersion[] GetSupportedVersions() => [ProtocolVersion.DTLSv12];
+
+
+        protected override IList<SignatureAndHashAlgorithm> GetSupportedSignatureAlgorithms()
         {
-            return new ProtocolVersion[]
-            {
-                ProtocolVersion.DTLSv10,
-                ProtocolVersion.DTLSv12,
-            };
+            return base.GetSupportedSignatureAlgorithms()
+                .Where(a => a.Signature == SignatureAlgorithm.ecdsa)
+                .ToArray();
         }
 
         public override void NotifyAlertReceived(short alertLevel, short alertDescription)

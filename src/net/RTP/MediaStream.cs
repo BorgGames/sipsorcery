@@ -139,9 +139,10 @@ namespace SIPSorcery.net.RTP
                 }
                 _isClosed = value;
 
-                if (value)
+                if (value && RtcpSession is not null)
                 {
                     RtcpSession.OnTimeout -= RaiseOnTimeoutByIndex;
+                    RtcpSession = null;
                 }
 
                 //Clear previous buffer

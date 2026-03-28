@@ -194,6 +194,9 @@ namespace SIPSorceryMedia.FFmpeg
                 case VideoCodecsEnum.VP9:
                     avCodecID = AVCodecID.AV_CODEC_ID_VP9;
                     break;
+                case VideoCodecsEnum.AV1:
+                    avCodecID = AVCodecID.AV_CODEC_ID_AV1;
+                    break;
                 case VideoCodecsEnum.H264:
                     avCodecID = AVCodecID.AV_CODEC_ID_H264;
                     break;
@@ -215,6 +218,8 @@ namespace SIPSorceryMedia.FFmpeg
         {
             switch (avCodecID)
             {
+                case AVCodecID.AV_CODEC_ID_AV1:
+                    return VideoCodecsEnum.AV1;
                 case AVCodecID.AV_CODEC_ID_H264:
                     return VideoCodecsEnum.H264;
             }

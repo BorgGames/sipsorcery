@@ -25,6 +25,7 @@ namespace SIPSorceryMedia.FFmpeg
         [
             new VideoFormat(VideoCodecsEnum.VP8, _dynFmtIdCounter++, VideoFormat.DEFAULT_CLOCK_RATE),
             new VideoFormat(VideoCodecsEnum.VP9, _dynFmtIdCounter++, VideoFormat.DEFAULT_CLOCK_RATE),
+            new VideoFormat(VideoCodecsEnum.AV1, _dynFmtIdCounter++, VideoFormat.DEFAULT_CLOCK_RATE),
             new VideoFormat(VideoCodecsEnum.H264, _dynFmtIdCounter++, VideoFormat.DEFAULT_CLOCK_RATE, "packetization-mode=1"),
             new VideoFormat(VideoCodecsEnum.H265, _dynFmtIdCounter++, VideoFormat.DEFAULT_CLOCK_RATE, "packetization-mode=1"),
 

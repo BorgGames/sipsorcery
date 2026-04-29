@@ -1,4 +1,4 @@
-//-----------------------------------------------------------------------------
+﻿//-----------------------------------------------------------------------------
 // Filename: SctpAssociationUnitTest.cs
 //
 // Description: Unit tests for the SctpAssociation class.
@@ -38,9 +38,9 @@ namespace SIPSorcery.Net.UnitTests
         /// a connection.
         /// </summary>
         [Fact]
-        public void ConnectAssociations()
+        public async Task ConnectAssociations()
         {
-            logger.LogDebug("--> " + System.Reflection.MethodBase.GetCurrentMethod().Name);
+            logger.LogDebug("--> {MethodName}", System.Reflection.MethodBase.GetCurrentMethod().Name);
             logger.BeginScope(System.Reflection.MethodBase.GetCurrentMethod().Name);
 
             BlockingCollection<byte[]> _aOut = new BlockingCollection<byte[]>();
@@ -75,7 +75,14 @@ namespace SIPSorcery.Net.UnitTests
 
             aAssoc.Init();
 
-            Task.WaitAll(new Task[] { aAssocTcs.Task, bAssocTcs.Task }, 5000);
+            var combined = Task.WhenAll(aAssocTcs.Task, bAssocTcs.Task);
+            var timeout = Task.Delay(TimeSpan.FromSeconds(5));
+            var winner = await Task.WhenAny(combined, timeout);
+
+            if (winner == timeout)
+            {
+                Assert.Fail("Associations did not establish within 5 seconds.");
+            }
 
             Assert.Equal(SctpAssociationState.Established, aAssoc.State);
             Assert.Equal(SctpAssociationState.Established, bAssoc.State);
@@ -89,9 +96,9 @@ namespace SIPSorcery.Net.UnitTests
         /// between them.
         /// </summary>
         [Fact]
-        public void SendDataChunk()
+        public async Task SendDataChunk()
         {
-            logger.LogDebug("--> " + System.Reflection.MethodBase.GetCurrentMethod().Name);
+            logger.LogDebug("--> {MethodName}", System.Reflection.MethodBase.GetCurrentMethod().Name);
             logger.BeginScope(System.Reflection.MethodBase.GetCurrentMethod().Name);
 
             (var aAssoc, var bAssoc) = AssociationTestHelper.GetConnectedAssociations(logger, 1400);
@@ -101,19 +108,25 @@ namespace SIPSorcery.Net.UnitTests
             bAssoc.OnData += (frame) => tcs.TrySetResult(Encoding.UTF8.GetString(frame.UserData.ToArray()));
             aAssoc.SendData(0, 0, Encoding.UTF8.GetBytes(message));
 
-            tcs.Task.Wait(3000);
+            var timeoutTask = Task.Delay(TimeSpan.FromSeconds(3));
+            var completed = await Task.WhenAny(tcs.Task, timeoutTask);
+
+            if (completed == timeoutTask)
+            {
+                Assert.Fail($"Timed out after 3 seconds.");
+            }
 
             Assert.True(tcs.Task.IsCompleted);
-            Assert.Equal(message, tcs.Task.Result);
+            Assert.Equal(message, await tcs.Task);
         }
 
         /// <summary>
         /// Tests sending a small fragmented data chunk between SCTP associations.
         /// </summary>
         [Fact]
-        public void SendFragmentedDataChunk()
+        public async Task SendFragmentedDataChunk()
         {
-            logger.LogDebug("--> " + System.Reflection.MethodBase.GetCurrentMethod().Name);
+            logger.LogDebug("--> {MethodName}", System.Reflection.MethodBase.GetCurrentMethod().Name);
             logger.BeginScope(System.Reflection.MethodBase.GetCurrentMethod().Name);
 
             // Setting a very small MTU to force the sending association to use fragmented data chunks.
@@ -126,19 +139,25 @@ namespace SIPSorcery.Net.UnitTests
             bAssoc.OnData += (frame) => tcs.TrySetResult(Encoding.UTF8.GetString(frame.UserData.ToArray()));
             aAssoc.SendData(0, 0, Encoding.UTF8.GetBytes(message));
 
-            tcs.Task.Wait(3000);
+            var timeoutTask = Task.Delay(TimeSpan.FromSeconds(3));
+            var completed = await Task.WhenAny(tcs.Task, timeoutTask);
+
+            if (completed == timeoutTask)
+            {
+                Assert.Fail($"Timed out after 3 seconds.");
+            }
 
             Assert.True(tcs.Task.IsCompleted);
-            Assert.Equal(message, tcs.Task.Result);
+            Assert.Equal(message, await tcs.Task);
         }
 
         /// <summary>
         /// Tests sending a large fragmented data chunk between SCTP associations.
         /// </summary>
         [Fact]
-        public void SendLargeFragmentedDataChunk()
+        public async Task SendLargeFragmentedDataChunk()
         {
-            logger.LogDebug("--> " + System.Reflection.MethodBase.GetCurrentMethod().Name);
+            logger.LogDebug("--> {MethodName}", System.Reflection.MethodBase.GetCurrentMethod().Name);
             logger.BeginScope(System.Reflection.MethodBase.GetCurrentMethod().Name);
 
             // Setting a very small MTU to force the sending association to use fragmented data chunks.
@@ -151,10 +170,16 @@ namespace SIPSorcery.Net.UnitTests
             bAssoc.OnData += (frame) => tcs.TrySetResult(Crypto.GetSHA256Hash(frame.UserData));
             aAssoc.SendData(0, 0, dummyData);
 
-            tcs.Task.Wait(3000);
+            var timeoutTask = Task.Delay(TimeSpan.FromSeconds(3));
+            var completed = await Task.WhenAny(tcs.Task, timeoutTask);
+
+            if (completed == timeoutTask)
+            {
+                Assert.Fail($"Timed out after 3 seconds.");
+            }
 
             Assert.True(tcs.Task.IsCompleted);
-            Assert.Equal(sha256Hash, tcs.Task.Result);
+            Assert.Equal(sha256Hash, await tcs.Task);
         }
     }
 
@@ -173,10 +198,10 @@ namespace SIPSorcery.Net.UnitTests
             var aAssoc = new SctpAssociation(aTransport, null, 5000, 5000, mtu, 0);
             aTransport.OnSctpPacket += aAssoc.OnPacketReceived;
             var aAssocTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-            aAssoc.OnAborted += (reason) => logger.LogError($"Association A aborted with {reason}.");
+            aAssoc.OnAborted += (reason) => logger.LogError("Association A aborted with {reason}.", reason);
             aAssoc.OnAssociationStateChanged += (state) =>
             {
-                logger.LogDebug($"Association A changed to state {state}.");
+                logger.LogDebug("Association A changed to state {state}.", state);
                 if (state == SctpAssociationState.Established)
                 {
                     aAssocTcs.TrySetResult(true);
@@ -189,10 +214,10 @@ namespace SIPSorcery.Net.UnitTests
             bTransport.OnSctpPacket += bAssoc.OnPacketReceived;
             bTransport.OnCookieEcho += bAssoc.GotCookie;
             var bAssocTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-            bAssoc.OnAborted += (reason) => logger.LogError($"Association B aborted with {reason}.");
+            bAssoc.OnAborted += (reason) => logger.LogError("Association B aborted with {reason}.", reason);
             bAssoc.OnAssociationStateChanged += (state) =>
             {
-                logger.LogDebug($"Association B changed to state {state}.");
+                logger.LogDebug("Association B changed to state {state}.", state);
                 if (state == SctpAssociationState.Established)
                 {
                     bAssocTcs.TrySetResult(true);

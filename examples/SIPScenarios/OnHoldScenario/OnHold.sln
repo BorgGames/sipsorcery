@@ -3,7 +3,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 16
 VisualStudioVersion = 16.0.29911.98
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "SIPSorcery", "..\..\..\src\SIPSorcery.csproj", "{E8EE19DB-F5E3-4F8A-BC76-26565B73A4AE}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "SIPSorcery", "..\..\..\src\SIPSorcery\SIPSorcery.csproj", "{E8EE19DB-F5E3-4F8A-BC76-26565B73A4AE}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Caller", "Caller\Caller.csproj", "{41861BAC-C5B6-475A-8B16-488E79BC0312}"
 EndProject

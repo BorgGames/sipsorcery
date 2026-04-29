@@ -38,11 +38,13 @@ namespace SIPSorcery.Net.UnitTests
             
             var offer = pcSrc.createOffer(new RTCOfferOptions());
 
-            Assert.NotNull(offer.toJSON());
+            var offerJson = offer.toJSON();
 
-            logger.LogDebug($"offer: {offer.toJSON()}");
+            Assert.NotNull(offerJson);
 
-            var parseResult = RTCSessionDescriptionInit.TryParse(offer.toJSON(), out var init);
+            logger.LogDebug("offer: {OfferJson}", offerJson);
+
+            var parseResult = RTCSessionDescriptionInit.TryParse(offerJson, out var init);
 
             Assert.True(parseResult);
 
@@ -51,6 +53,8 @@ namespace SIPSorcery.Net.UnitTests
 
             SDP sdp = SDP.ParseSDPDescription(init.sdp);
             Assert.Equal(0, sdp.Version);
+
+            pcSrc.close();
         }
 
         /// <summary>

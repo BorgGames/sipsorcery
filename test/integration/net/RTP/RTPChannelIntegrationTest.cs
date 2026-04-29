@@ -17,6 +17,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
@@ -42,9 +43,9 @@ namespace SIPSorcery.Net.UnitTests
         /// Tests that multiple pairs of RTP channels can communicate.
         /// </summary>
         [Fact]
-        public void MultipleRtpChannelLoopbackUnitTest()
+        public async Task MultipleRtpChannelLoopbackUnitTest()
         {
-            logger.LogDebug("--> " + System.Reflection.MethodBase.GetCurrentMethod().Name);
+            logger.LogDebug("--> {MethodName}", System.Reflection.MethodBase.GetCurrentMethod().Name);
             logger.BeginScope(System.Reflection.MethodBase.GetCurrentMethod().Name);
 
             const int PACKET_LENGTH = 100;
@@ -63,7 +64,7 @@ namespace SIPSorcery.Net.UnitTests
                     RTPChannel channel2 = new RTPChannel(false, null);
                     channel2.OnRTPDataReceived += (lep, rep, pkt) =>
                     {
-                        logger.LogDebug($"RTP data receive packet length {pkt.Length}.");
+                        logger.LogDebug("RTP data receive packet length {PacketLength}.", pkt.Length);
                         testResult = pkt.Length == PACKET_LENGTH;
                         testCompleteEvent.Set();
                     };
@@ -77,11 +78,11 @@ namespace SIPSorcery.Net.UnitTests
                     IPAddress channel2Address = (channel2.RTPLocalEndPoint.AddressFamily == AddressFamily.InterNetworkV6) ? IPAddress.IPv6Loopback : IPAddress.Loopback;
                     IPEndPoint channel2Dst = new IPEndPoint(channel2Address, channel2.RTPPort);
 
-                    logger.LogDebug($"Attempting to send packet from {channel1.RTPLocalEndPoint} to {channel2Dst}.");
+                    logger.LogDebug("Attempting to send packet from {RTPLocalEndPoint} to {channel2Dst}.", channel1.RTPLocalEndPoint, channel2Dst);
 
                     var sendResult = channel1.Send(RTPChannelSocketsEnum.RTP, channel2Dst, new byte[PACKET_LENGTH]);
 
-                    logger.LogDebug($"Send result {sendResult}.");
+                    logger.LogDebug("Send result {sendResult}.", sendResult);
 
                     testCompleteEvent.Wait(TimeSpan.FromSeconds(TEST_TIMEOUT_SECONDS));
 
@@ -94,11 +95,15 @@ namespace SIPSorcery.Net.UnitTests
                 tasks.Add(t);
             }
 
-            CancellationTokenSource cts = new CancellationTokenSource();
+            var timeoutTask = Task.Delay(TimeSpan.FromMilliseconds(10000));
+            var winner = await Task.WhenAny(tasks.Concat(new[] { timeoutTask }));
 
-            Assert.True(Task.WaitAll(tasks.ToArray(), 10000, cts.Token));
+            if (winner == timeoutTask)
+            {
+                Assert.Fail($"Test timed out after 10s.");
+            }
 
-            logger.LogDebug($"Test complete.");
+            logger.LogDebug("Test complete.");
         }
     }
 }

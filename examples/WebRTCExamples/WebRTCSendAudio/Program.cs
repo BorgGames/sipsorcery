@@ -15,7 +15,6 @@
 //-----------------------------------------------------------------------------
 
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Threading;
@@ -33,7 +32,6 @@ namespace demo
     class Program
     {
         private const int WEBSOCKET_PORT = 8081;
-        private const string STUN_URL = "stun:stun.sipsorcery.com";
 
         private static Microsoft.Extensions.Logging.ILogger logger = NullLogger.Instance;
 
@@ -67,11 +65,12 @@ namespace demo
         {
             RTCConfiguration config = new RTCConfiguration
             {
-                iceServers = new List<RTCIceServer> { new RTCIceServer { urls = STUN_URL } }
+                //iceServers = new List<RTCIceServer> { new RTCIceServer { urls = STUN_URL } }
             };
             var pc = new RTCPeerConnection(config);
-
-            AudioExtrasSource audioSource = new AudioExtrasSource(new AudioEncoder(), new AudioSourceOptions { AudioSource = AudioSourcesEnum.SineWave });
+           
+            AudioExtrasSource audioSource = new AudioExtrasSource(new AudioEncoder(includeOpus: false), new AudioSourceOptions { AudioSource = AudioSourcesEnum.SineWave });
+            //audioSource.RestrictFormats(x => x.FormatName == "OPUS");
             audioSource.OnAudioSourceEncodedSample += pc.SendAudio;
 
             MediaStreamTrack audioTrack = new MediaStreamTrack(audioSource.GetAudioSourceFormats(), MediaStreamStatusEnum.SendOnly);
@@ -102,6 +101,20 @@ namespace demo
             pc.OnSendReport += (media, sr) => logger.LogDebug($"RTCP Send for {media}\n{sr.GetDebugSummary()}");
             pc.GetRtpChannel().OnStunMessageReceived += (msg, ep, isRelay) => logger.LogDebug($"STUN {msg.Header.MessageType} received from {ep}.");
             pc.oniceconnectionstatechange += (state) => logger.LogDebug($"ICE connection state change to {state}.");
+            pc.onsignalingstatechange += () =>
+            {
+                logger.LogDebug($"Signalling state change to {pc.signalingState}.");
+                if (pc.signalingState == RTCSignalingState.have_local_offer)
+                {
+                    logger.LogDebug("Offer SDP:");
+                    logger.LogDebug(pc.localDescription.sdp.ToString());
+                }
+                else if (pc.signalingState == RTCSignalingState.have_remote_offer || pc.signalingState == RTCSignalingState.stable)
+                {
+                    logger.LogDebug("Answer SDP:");
+                    logger.LogDebug(pc.remoteDescription.sdp.ToString());
+                }
+            };
 
             return Task.FromResult(pc);
         }

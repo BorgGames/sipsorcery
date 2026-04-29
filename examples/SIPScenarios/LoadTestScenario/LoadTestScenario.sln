@@ -7,7 +7,7 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "LoadServer", "LoadServer\Lo
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "LoadClient", "LoadClient\LoadClient.csproj", "{1EAA2FFD-BE28-4C85-B68C-CF003B03FFCC}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "SIPSorcery", "..\..\..\src\SIPSorcery.csproj", "{33DAD9FB-61EE-4B01-A0F3-3D3C0F3599CC}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "SIPSorcery", "..\..\..\src\SIPSorcery\SIPSorcery.csproj", "{33DAD9FB-61EE-4B01-A0F3-3D3C0F3599CC}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

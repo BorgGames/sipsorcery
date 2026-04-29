@@ -1,10 +1,6 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Net;
-using System.Text;
 using Microsoft.Extensions.Logging;
-using SIPSorcery.Sys;
-using SIPSorceryMedia.Abstractions;
 using Xunit;
 
 namespace SIPSorcery.Net.UnitTests
@@ -19,13 +15,14 @@ namespace SIPSorcery.Net.UnitTests
         {
             logger = SIPSorcery.UnitTests.TestLogHelper.InitTestLogger(output);
         }
+
         /// <summary>
         /// Checks that the SDP with Message Media is well formatted.
         /// </summary>
         [Fact]
         public void InvalidPortInRemoteOfferTest()
         {
-            logger.LogDebug("--> " + System.Reflection.MethodBase.GetCurrentMethod().Name);
+            logger.LogDebug("--> {MethodName}", System.Reflection.MethodBase.GetCurrentMethod().Name);
             logger.BeginScope(System.Reflection.MethodBase.GetCurrentMethod().Name);
 
             var remoteOffer = new SDP();

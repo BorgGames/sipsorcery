@@ -11,6 +11,7 @@
 // History:
 // 23 Dec 2020	Aaron Clauson	Created, Dublin, Ireland.
 // 30 Sep 2024  Aaron Clauson   Broken :(. Needs investigation.
+// 15 Oct 2024  Aaron Clauson   Fixed. Was just missing FFmpeg initialise call.
 //
 // License: 
 // BSD 3-Clause "New" or "Revised" License, see included LICENSE.md file.
@@ -22,14 +23,14 @@
 // dotnet run -- --tp
 //
 // Calling application:
-// dotnet run --no-build -- --dst=127.0.0.1:5080 --tp
+// dotnet run --dst=127.0.0.1:5080 --tp
 //
 // Usage - with two webcams:
 // Listening application:
 // dotnet run
 //
 // Calling application:
-// dotnet run --no-build -- --dst=127.0.0.1:5080 --cam=1
+// dotnet run --dst=127.0.0.1:5080 --cam=1
 //-----------------------------------------------------------------------------
 
 using System;
@@ -88,7 +89,9 @@ namespace demo
         private MediaFormatManager<VideoFormat> _formatManager;
 
         public event VideoSinkSampleDecodedDelegate OnVideoSinkDecodedSample;
+#pragma warning disable CS0067
         public event VideoSinkSampleDecodedFasterDelegate OnVideoSinkDecodedSampleFaster;
+#pragma warning restore CS0067
 
         public DecoderVideoSink(IVideoEncoder videoDecoder)
         {
@@ -152,6 +155,8 @@ namespace demo
             Log = AddConsoleLogger();
             ManualResetEvent exitMRE = new ManualResetEvent(false);
             ManualResetEvent waitForCallMre = new ManualResetEvent(false);
+
+            SIPSorceryMedia.FFmpeg.FFmpegInit.Initialise(SIPSorceryMedia.FFmpeg.FfmpegLogLevelEnum.AV_LOG_VERBOSE, null, Log);
 
             var parseResult = Parser.Default.ParseArguments<Options>(args);
             _options = (parseResult as Parsed<Options>)?.Value;
@@ -285,7 +290,7 @@ namespace demo
                     if (!_options.NoAudio)
                     {
                         windowsAudioEndPoint = new WindowsAudioEndPoint(new AudioEncoder());
-                        windowsAudioEndPoint.RestrictFormats(x => x.Codec == AudioCodecsEnum.G722);
+                        windowsAudioEndPoint.RestrictFormats(x => x.Codec == AudioCodecsEnum.PCMU || x.Codec == AudioCodecsEnum.PCMA);
                     }
 
                     MediaEndPoints mediaEndPoints = null;

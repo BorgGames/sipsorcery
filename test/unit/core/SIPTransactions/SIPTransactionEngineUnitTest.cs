@@ -9,10 +9,12 @@
 // BSD 3-Clause "New" or "Revised" License, see included LICENSE.md file.
 //-----------------------------------------------------------------------------
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
+using System.Reflection;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Xunit;
@@ -53,7 +55,7 @@ namespace SIPSorcery.SIP.UnitTests
         [Fact]
         public void MatchOnRequestAndResponseTest()
         {
-            logger.LogDebug("--> " + System.Reflection.MethodBase.GetCurrentMethod().Name);
+            logger.LogDebug("--> {MethodName}", System.Reflection.MethodBase.GetCurrentMethod().Name);
             logger.BeginScope(System.Reflection.MethodBase.GetCurrentMethod().Name);
 
             SIPTransport sipTransport = new SIPTransport();
@@ -94,9 +96,9 @@ namespace SIPSorcery.SIP.UnitTests
         /// </summary>
         [Fact]
         [Trait("Category", "txintegration")]
-        public void AckRecognitionUnitTest()
+        public async Task AckRecognitionUnitTest()
         {
-            logger.LogDebug("--> " + System.Reflection.MethodBase.GetCurrentMethod().Name);
+            logger.LogDebug("--> {MethodName}", System.Reflection.MethodBase.GetCurrentMethod().Name);
             logger.BeginScope(System.Reflection.MethodBase.GetCurrentMethod().Name);
 
             SIPTransport clientTransport = null;
@@ -120,7 +122,7 @@ namespace SIPSorcery.SIP.UnitTests
                 SetTransportTraceEvents(serverTransport);
                 serverTransport.SIPTransportRequestReceived += (localEndPoint, remoteEndPoint, sipRequest) =>
                 {
-                    logger.LogDebug("Server Transport Request In: " + sipRequest.Method + ".");
+                    logger.LogDebug("Server Transport Request In: {Method}.", sipRequest.Method);
                     serverTransaction = new UASInviteTransaction(serverTransport, sipRequest, null);
                     SetTransactionTraceEvents(serverTransaction);
                     //serverTransaction.NewCallReceived += (lep, rep, sipTransaction, newCallRequest) =>
@@ -136,7 +138,7 @@ namespace SIPSorcery.SIP.UnitTests
                         {
                             if (!uasConfirmedTask.TrySetResult(true))
                             {
-                                logger.LogWarning($"AckRecognitionUnitTest: FAILED to set result on CompletionSource.");
+                                logger.LogWarning("AckRecognitionUnitTest: FAILED to set result on CompletionSource.");
                             }
                         }
                     };
@@ -155,9 +157,12 @@ namespace SIPSorcery.SIP.UnitTests
                 clientEngine.AddTransaction(clientTransaction);
                 clientTransaction.SendInviteRequest();
 
-                if (!uasConfirmedTask.Task.Wait(TRANSACTION_EXCHANGE_TIMEOUT_MS))
+                var timeoutTask = Task.Delay(TimeSpan.FromSeconds(TRANSACTION_EXCHANGE_TIMEOUT_MS));
+                var completed = await Task.WhenAny(uasConfirmedTask.Task, timeoutTask);
+
+                if (completed == timeoutTask)
                 {
-                    logger.LogWarning($"Tasks timed out");
+                    logger.LogWarning("Tasks timed out");
                 }
 
                 Assert.True(clientTransaction.TransactionState == SIPTransactionStatesEnum.Confirmed, "Client transaction in incorrect state.");
@@ -173,7 +178,7 @@ namespace SIPSorcery.SIP.UnitTests
         [Fact]
         public void AckRecognitionIIUnitTest()
         {
-            logger.LogDebug("--> " + System.Reflection.MethodBase.GetCurrentMethod().Name);
+            logger.LogDebug("--> {MethodName}", System.Reflection.MethodBase.GetCurrentMethod().Name);
             logger.BeginScope(System.Reflection.MethodBase.GetCurrentMethod().Name);
 
             SIPTransport sipTransport = new SIPTransport();
@@ -218,6 +223,64 @@ namespace SIPSorcery.SIP.UnitTests
             Assert.True(matchingTransaction.TransactionId == serverTransaction.TransactionId, "ACK transaction did not match INVITE transaction.");
         }
 
+        [Fact]
+        public void CancelledInviteWithoutCancelledAt_ExpiresUsingCreatedFallback()
+        {
+            logger.LogDebug("--> {MethodName}", System.Reflection.MethodBase.GetCurrentMethod().Name);
+            logger.BeginScope(System.Reflection.MethodBase.GetCurrentMethod().Name);
+
+            SIPTransport sipTransport = new SIPTransport();
+            SIPTransactionEngine engine = sipTransport.m_transactionEngine;
+
+            SIPRequest inviteRequest = GetDummyINVITERequest(SIPURI.ParseSIPURI("sip:dummy@127.0.0.1:12014"));
+            var tx = new UACInviteTransaction(sipTransport, inviteRequest, null);
+            engine.AddTransaction(tx);
+
+            tx.Created = DateTime.Now.AddMilliseconds(-(SIPTimings.T6 + 1000));
+
+            var stateField = typeof(SIPTransaction).GetField("m_transactionState", BindingFlags.Instance | BindingFlags.NonPublic);
+            stateField.SetValue(tx, SIPTransactionStatesEnum.Cancelled);
+
+            var removeExpiredMethod = typeof(SIPTransactionEngine).GetMethod("RemoveExpiredTransactions", BindingFlags.Instance | BindingFlags.NonPublic);
+            removeExpiredMethod.Invoke(engine, null);
+
+            Assert.Null(engine.GetTransaction(inviteRequest));
+
+            sipTransport.Shutdown();
+        }
+
+        [Fact]
+        public void CancelledInviteWithRecentCancelledAt_IsNotExpired()
+        {
+            logger.LogDebug("--> {MethodName}", System.Reflection.MethodBase.GetCurrentMethod().Name);
+            logger.BeginScope(System.Reflection.MethodBase.GetCurrentMethod().Name);
+
+            SIPTransport sipTransport = new SIPTransport();
+            SIPTransactionEngine engine = sipTransport.m_transactionEngine;
+
+            SIPRequest inviteRequest = GetDummyINVITERequest(SIPURI.ParseSIPURI("sip:dummy@127.0.0.1:12014"));
+            var tx = new UACInviteTransaction(sipTransport, inviteRequest, null);
+            engine.AddTransaction(tx);
+
+            // Flip to Cancelled BEFORE backdating Created. Otherwise there is a brief
+            // window in which the transaction has an "old" Created timestamp but is
+            // still in the Calling state, and the engine's background sweep thread
+            // (started by SIPTransport's constructor) can match the
+            // "now - Created >= T6, state == Calling/Trying" fall-through branch in
+            // RemoveExpiredTransactions and remove the transaction before this test
+            // ever calls the sweep itself. That manifested as a sporadic CI failure
+            // on the order of ~5% of runs.
+            tx.CancelCall();
+            tx.Created = DateTime.Now.AddMilliseconds(-(SIPTimings.T6 * 2));
+
+            var removeExpiredMethod = typeof(SIPTransactionEngine).GetMethod("RemoveExpiredTransactions", BindingFlags.Instance | BindingFlags.NonPublic);
+            removeExpiredMethod.Invoke(engine, null);
+
+            Assert.NotNull(engine.GetTransaction(inviteRequest));
+
+            sipTransport.Shutdown();
+        }
+
         private SIPRequest GetDummyINVITERequest(SIPURI dummyURI)
         {
             string dummyFrom = "<sip:unittest@mysipswitch.com>";
@@ -259,57 +322,57 @@ namespace SIPSorcery.SIP.UnitTests
 
         void transaction_TransactionTraceMessage(SIPTransaction sipTransaction, string message)
         {
-            logger.LogDebug(sipTransaction.GetType() + " Trace (" + sipTransaction.TransactionId + "): " + message);
+            logger.LogDebug("{TransactionType} Trace ({TransactionId}): {Message}", sipTransaction.GetType(), sipTransaction.TransactionId, message);
         }
 
         void transaction_TransactionStateChanged(SIPTransaction sipTransaction)
         {
-            logger.LogDebug(sipTransaction.GetType() + " State Change (" + sipTransaction.TransactionId + "): " + sipTransaction.TransactionState);
+            logger.LogDebug("{TransactionType} State Change ({TransactionId}): {TransactionState}", sipTransaction.GetType(), sipTransaction.TransactionId, sipTransaction.TransactionState);
         }
 
         void transaction_TransactionRemoved(SIPTransaction sipTransaction)
         {
-            logger.LogDebug(sipTransaction.GetType() + " Removed (" + sipTransaction.TransactionId + ")");
+            logger.LogDebug("{TransactionType} Removed ({TransactionId})", sipTransaction.GetType(), sipTransaction.TransactionId);
         }
 
         void transport_UnrecognisedMessageReceived(SIPEndPoint localEndPoint, SIPEndPoint fromEndPoint, byte[] buffer)
         {
-            logger.LogDebug("Unrecognised: " + localEndPoint + "<-" + fromEndPoint + " " + buffer.Length + " bytes.");
+            logger.LogDebug("Unrecognised: {LocalEndPoint}<-{FromEndPoint} {BufferLength} bytes.", localEndPoint, fromEndPoint, buffer.Length);
         }
 
         void transport_STUNRequestReceived(IPEndPoint receivedEndPoint, IPEndPoint remoteEndPoint, byte[] buffer, int bufferLength)
         {
-            logger.LogDebug("STUN: " + receivedEndPoint + "<-" + remoteEndPoint.ToString() + " " + buffer.Length + " bufferLength.");
+            logger.LogDebug("STUN: {ReceivedEndPoint}<-{RemoteEndPoint} {BufferLength} bufferLength.", receivedEndPoint, remoteEndPoint.ToString(), buffer.Length);
         }
 
         void transport_SIPResponseOutTraceEvent(SIPEndPoint localEndPoint, SIPEndPoint toEndPoint, SIPResponse sipResponse)
         {
-            logger.LogDebug("Response Out: " + localEndPoint + "->" + toEndPoint.ToString() + "\n" + sipResponse.ToString());
+            logger.LogDebug("Response Out: {LocalEndPoint}->{ToEndPoint}\n{SIPResponse}", localEndPoint, toEndPoint.ToString(), sipResponse.ToString());
         }
 
         void transport_SIPResponseInTraceEvent(SIPEndPoint localEndPoint, SIPEndPoint fromEndPoint, SIPResponse sipResponse)
         {
-            logger.LogDebug("Response In: " + localEndPoint + "<-" + fromEndPoint + "\n" + sipResponse.ToString());
+            logger.LogDebug("Response In: {LocalEndPoint}<-{FromEndPoint}\n{SIPResponse}", localEndPoint, fromEndPoint, sipResponse.ToString());
         }
 
         void transport_SIPRequestOutTraceEvent(SIPEndPoint localEndPoint, SIPEndPoint toEndPoint, SIPRequest sipRequest)
         {
-            logger.LogDebug("Request Out: " + localEndPoint + "->" + toEndPoint + "\n" + sipRequest.ToString());
+            logger.LogDebug("Request Out: {LocalEndPoint}->{ToEndPoint}\n{SIPRequest}", localEndPoint, toEndPoint, sipRequest.ToString());
         }
 
         void transport_SIPRequestInTraceEvent(SIPEndPoint localEndPoint, SIPEndPoint fromEndPoint, SIPRequest sipRequest)
         {
-            logger.LogDebug("Request In: " + localEndPoint + "<-" + fromEndPoint + "\n" + sipRequest.ToString());
+            logger.LogDebug("Request In: {LocalEndPoint}<-{FromEndPoint}\n{SIPRequest}", localEndPoint, fromEndPoint, sipRequest.ToString());
         }
 
         void transport_SIPBadResponseInTraceEvent(SIPEndPoint localEndPoint, SIPEndPoint fromEndPoint, string message, SIPValidationFieldsEnum errorField, string rawMessage)
         {
-            logger.LogDebug("Bad Response: " + localEndPoint + "<-" + fromEndPoint + " " + errorField + ". " + message + "\n" + rawMessage);
+            logger.LogDebug("Bad Response: {LocalEndPoint}<-{FromEndPoint} {ErrorField}. {Message}\n{RawMessage}", localEndPoint, fromEndPoint, errorField, message, rawMessage);
         }
 
         void transport_SIPBadRequestInTraceEvent(SIPEndPoint localEndPoint, SIPEndPoint fromEndPoint, string message, SIPValidationFieldsEnum errorField, string rawMessage)
         {
-            logger.LogDebug("Bad Request: " + localEndPoint + "<-" + fromEndPoint + " " + errorField + "." + message + "\n" + rawMessage);
+            logger.LogDebug("Bad Request: {LocalEndPoint}<-{FromEndPoint} {ErrorField}.{Message}\n{RawMessage}", localEndPoint, fromEndPoint, errorField, message, rawMessage);
         }
     }
 }

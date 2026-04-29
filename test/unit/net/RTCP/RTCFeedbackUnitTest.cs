@@ -36,7 +36,7 @@ namespace SIPSorcery.Net.UnitTests
         [Fact]
         public void RoundtripPictureLossIndicationReportUnitTest()
         {
-            logger.LogDebug("--> " + System.Reflection.MethodBase.GetCurrentMethod().Name);
+            logger.LogDebug("--> {MethodName}", System.Reflection.MethodBase.GetCurrentMethod().Name);
             logger.BeginScope(System.Reflection.MethodBase.GetCurrentMethod().Name);
 
             uint senderSsrc = 33;
@@ -45,7 +45,7 @@ namespace SIPSorcery.Net.UnitTests
             RTCPFeedback rtcpPli = new RTCPFeedback(senderSsrc, mediaSsrc, PSFBFeedbackTypesEnum.PLI);
             byte[] buffer = rtcpPli.GetBytes();
 
-            logger.LogDebug($"Serialised PLI feedback report: {BufferUtils.HexStr(buffer)}.");
+            logger.LogDebug("Serialised PLI feedback report: {Buffer}", BufferUtils.HexStr(buffer));
 
             RTCPFeedback parsedPli = new RTCPFeedback(buffer);
 
@@ -63,7 +63,7 @@ namespace SIPSorcery.Net.UnitTests
         [Fact]
         public void RoundtripREMBUnitTest()
         {
-            logger.LogDebug("--> " + System.Reflection.MethodBase.GetCurrentMethod().Name);
+            logger.LogDebug("--> {MethodName}", System.Reflection.MethodBase.GetCurrentMethod().Name);
             logger.BeginScope(System.Reflection.MethodBase.GetCurrentMethod().Name);
 
             uint senderSsrc = 33;
@@ -80,7 +80,7 @@ namespace SIPSorcery.Net.UnitTests
             };
             byte[] buffer = rtcpREMB.GetBytes();
 
-            logger.LogDebug($"Serialised REMB: {BufferUtils.HexStr(buffer)}.");
+            logger.LogDebug("Serialised REMB: {Buffer}", BufferUtils.HexStr(buffer));
 
             RTCPFeedback parsedREMB = new RTCPFeedback(buffer);
 
@@ -93,6 +93,47 @@ namespace SIPSorcery.Net.UnitTests
             Assert.Equal(rtcpREMB.BitrateExp, parsedREMB.BitrateExp);
             Assert.Equal(rtcpREMB.BitrateMantissa, parsedREMB.BitrateMantissa);
             Assert.Equal(rtcpREMB.FeedbackSSRC, parsedREMB.FeedbackSSRC);
+        }
+        
+        /// <summary>
+        /// Tests that an RTCPFeedback for REMB payload with multiple SSRCs can
+        /// be correctly serialised and deserialised.
+        /// </summary>
+        [Fact]
+        public void RoundtripREMBUnitTestMultipleSsrcs()
+        {
+            logger.LogDebug("--> {MethodName}", System.Reflection.MethodBase.GetCurrentMethod().Name);
+            logger.BeginScope(System.Reflection.MethodBase.GetCurrentMethod().Name);
+
+            uint senderSsrc = 33;
+            uint mediaSsrc = 44;
+
+            RTCPFeedback rtcpREMB = new RTCPFeedback(senderSsrc, mediaSsrc, PSFBFeedbackTypesEnum.AFB)
+            {
+                SENDER_PAYLOAD_SIZE = 8 + 12+4+4, // 8 bytes from (SenderSSRC + MediaSSRC) + extra 12 bytes from REMB Definition +2x extra 8 bytes for SSRCs
+                UniqueID = "REMB",
+                NumSsrcs = 3,
+                BitrateExp = 4,
+                BitrateMantissa = 222242u,
+                FeedbackSSRCs = new uint[]{0x4a8eec30,0x4a8eec44,0x4a8eec58}
+            };
+            byte[] buffer = rtcpREMB.GetBytes();
+
+            logger.LogDebug("Serialised REMB: {Buffer}", BufferUtils.HexStr(buffer));
+
+            RTCPFeedback parsedREMB = new RTCPFeedback(buffer);
+            var parsedBuffer = parsedREMB.GetBytes();
+            Assert.Equal(parsedBuffer, buffer);
+            Assert.Equal(RTCPReportTypesEnum.PSFB, parsedREMB.Header.PacketType);
+            Assert.Equal(PSFBFeedbackTypesEnum.AFB, parsedREMB.Header.PayloadFeedbackMessageType);
+            Assert.Equal(senderSsrc, parsedREMB.SenderSSRC);
+            Assert.Equal(mediaSsrc, parsedREMB.MediaSSRC);
+            Assert.Equal(rtcpREMB.UniqueID, parsedREMB.UniqueID);
+            Assert.Equal(rtcpREMB.NumSsrcs, parsedREMB.NumSsrcs);
+            Assert.Equal(rtcpREMB.BitrateExp, parsedREMB.BitrateExp);
+            Assert.Equal(rtcpREMB.BitrateMantissa, parsedREMB.BitrateMantissa);
+            Assert.Equal(rtcpREMB.FeedbackSSRC, parsedREMB.FeedbackSSRC);
+            Assert.Equal(rtcpREMB.FeedbackSSRCs, parsedREMB.FeedbackSSRCs);
         }
     }
 }

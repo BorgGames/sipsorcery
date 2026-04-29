@@ -5,7 +5,7 @@ VisualStudioVersion = 17.1.32228.430
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "SipJs", "SipJs.csproj", "{059FDE3A-D10A-40B4-8B35-532B19B02519}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "SIPSorcery", "..\..\..\src\SIPSorcery.csproj", "{377BF25A-2835-426E-9809-56BD48BA2244}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "SIPSorcery", "..\..\..\src\SIPSorcery\SIPSorcery.csproj", "{377BF25A-2835-426E-9809-56BD48BA2244}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

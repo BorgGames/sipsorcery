@@ -5,7 +5,7 @@ VisualStudioVersion = 16.0.29911.84
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DataChannelStressTest", "DataChannelStressTest.csproj", "{AE1A64C0-5CCA-45A0-94B7-739F274B99D1}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "SIPSorcery", "..\..\..\src\SIPSorcery.csproj", "{85CADB8C-1237-4ACB-9CF8-EF6A7EE19209}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "SIPSorcery", "..\..\..\src\SIPSorcery\SIPSorcery.csproj", "{85CADB8C-1237-4ACB-9CF8-EF6A7EE19209}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

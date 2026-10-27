@@ -1,4 +1,4 @@
-﻿//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
 // Filename: DtlsUtilsUnitTest.cs
 //
 // Description: Unit tests for the DtlsUtils class.
@@ -14,7 +14,9 @@
 using System.Runtime.InteropServices;
 using System.Security.Cryptography.X509Certificates;
 using Microsoft.Extensions.Logging;
+using Org.BouncyCastle.Security;
 using Org.BouncyCastle.Tls.Crypto.Impl.BC;
+using SIPSorcery.UnitTests;
 using Xunit;
 
 namespace SIPSorcery.Net.IntegrationTests
@@ -40,12 +42,12 @@ namespace SIPSorcery.Net.IntegrationTests
         [Fact]
         public void CreateSelfSignedCertifcateUnitTest()
         {
-            logger.LogDebug("--> " + System.Reflection.MethodBase.GetCurrentMethod().Name);
-            logger.BeginScope(System.Reflection.MethodBase.GetCurrentMethod().Name);
+            logger.LogDebug("--> {MethodName}", TestHelper.GetCurrentMethodName());
+            logger.BeginScope(TestHelper.GetCurrentMethodName());
 
             (var tlsCert, var pvtKey) = DtlsUtils.CreateSelfSignedTlsCert(crypto);
 
-            logger.LogDebug(tlsCert.ToString());
+            logger.LogDebug("{TlsCert}", tlsCert.ToString());
 
             Assert.NotNull(tlsCert);
             Assert.NotNull(pvtKey);
@@ -57,14 +59,14 @@ namespace SIPSorcery.Net.IntegrationTests
         [Fact]
         public void GetCertifcateFingerprintUnitTest()
         {
-            logger.LogDebug("--> " + System.Reflection.MethodBase.GetCurrentMethod().Name);
-            logger.BeginScope(System.Reflection.MethodBase.GetCurrentMethod().Name);
+            logger.LogDebug("--> {MethodName}", TestHelper.GetCurrentMethodName());
+            logger.BeginScope(TestHelper.GetCurrentMethodName());
 
             (var tlsCert, var pvtKey) = DtlsUtils.CreateSelfSignedTlsCert(crypto);
             Assert.NotNull(tlsCert);
 
             var fingerprint = DtlsUtils.Fingerprint(tlsCert);
-            logger.LogDebug($"Fingerprint {fingerprint}.");
+            logger.LogDebug("Fingerprint {Fingerprint}.", fingerprint);
 
             Assert.NotNull(fingerprint.algorithm);
             Assert.NotNull(fingerprint.value);
@@ -80,8 +82,8 @@ namespace SIPSorcery.Net.IntegrationTests
         [Fact]
         public void LoadSecretFromArchiveUnitTest()
         {
-            logger.LogDebug("--> " + System.Reflection.MethodBase.GetCurrentMethod().Name);
-            logger.BeginScope(System.Reflection.MethodBase.GetCurrentMethod().Name);
+            logger.LogDebug("--> {MethodName}", TestHelper.GetCurrentMethodName());
+            logger.BeginScope(TestHelper.GetCurrentMethodName());
 
 #if NETCOREAPP
             if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
@@ -90,9 +92,15 @@ namespace SIPSorcery.Net.IntegrationTests
                 return;
             }
 #endif
+#if NET9_0_OR_GREATER
+            var cert = X509CertificateLoader.LoadPkcs12FromFile("certs/localhost.pfx", string.Empty, X509KeyStorageFlags.Exportable);
+#else
+#pragma warning disable SYSLIB0057 // X509Certificate2 constructor is obsolete in NET9+
             var cert = new X509Certificate2("certs/localhost.pfx", string.Empty, X509KeyStorageFlags.Exportable);
+#pragma warning restore SYSLIB0057
+#endif
             Assert.NotNull(cert);
-            var key = DtlsUtils.LoadPrivateKeyResource(cert);
+            var key = DotNetUtilities.GetKeyPair(cert.PrivateKey).Private;
             Assert.NotNull(key);
         }
 
@@ -103,8 +111,8 @@ namespace SIPSorcery.Net.IntegrationTests
         [Fact]
         public void BouncyCertFromCoreFxCert()
         {
-            logger.LogDebug("--> " + System.Reflection.MethodBase.GetCurrentMethod().Name);
-            logger.BeginScope(System.Reflection.MethodBase.GetCurrentMethod().Name);
+            logger.LogDebug("--> {MethodName}", TestHelper.GetCurrentMethodName());
+            logger.BeginScope(TestHelper.GetCurrentMethodName());
 
 #if NETCOREAPP
             if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
@@ -114,12 +122,19 @@ namespace SIPSorcery.Net.IntegrationTests
             }
 #endif
 
+#if NET9_0_OR_GREATER
+            var coreFxCert = X509CertificateLoader.LoadPkcs12FromFile("certs/localhost.pfx", string.Empty, X509KeyStorageFlags.Exportable);
+#else
+#pragma warning disable SYSLIB0057 // X509Certificate2 constructor is obsolete in NET9+
             var coreFxCert = new X509Certificate2("certs/localhost.pfx", string.Empty, X509KeyStorageFlags.Exportable);
+#pragma warning restore SYSLIB0057
+#endif
             Assert.NotNull(coreFxCert);
             Assert.NotNull(coreFxCert.PrivateKey);
 
-            string coreFxFingerprint = DtlsUtils.Fingerprint(crypto, coreFxCert).ToString();
-            logger.LogDebug($"Core FX certificate fingerprint {coreFxFingerprint}.");
+            var bouncyCertificate = DotNetUtilities.FromX509Certificate(coreFxCert);
+            string coreFxFingerprint = DtlsUtils.Fingerprint("sha-256", new BcTlsCertificate(crypto, Org.BouncyCastle.Asn1.X509.X509CertificateStructure.GetInstance(bouncyCertificate.GetEncoded()))).ToString();
+            logger.LogDebug("Core FX certificate fingerprint {CoreFxFingerprint}.", coreFxFingerprint);
 
             var bcCert = Org.BouncyCastle.Security.DotNetUtilities.FromX509Certificate(coreFxCert);
             Assert.NotNull(bcCert);
@@ -128,7 +143,7 @@ namespace SIPSorcery.Net.IntegrationTests
             Assert.NotNull(bcKey);
 
             string bcFingerprint = DtlsUtils.Fingerprint(bcCert).ToString();
-            logger.LogDebug($"BouncyCastle certificate fingerprint {bcFingerprint}.");
+            logger.LogDebug("BouncyCastle certificate fingerprint {BcFingerprint}.", bcFingerprint);
 
             Assert.Equal(coreFxFingerprint, bcFingerprint);
         }

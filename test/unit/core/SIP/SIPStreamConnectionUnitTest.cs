@@ -41,8 +41,8 @@ namespace SIPSorcery.SIP.UnitTests
         [Fact]
         public void TestSocketReadSingleMessageTest()
         {
-            logger.LogDebug("--> " + System.Reflection.MethodBase.GetCurrentMethod().Name);
-            logger.BeginScope(System.Reflection.MethodBase.GetCurrentMethod().Name);
+            logger.LogDebug("--> {MethodName}", TestHelper.GetCurrentMethodName());
+            logger.BeginScope(TestHelper.GetCurrentMethodName());
 
             string testReceive =
 "SUBSCRIBE sip:aaron@10.1.1.5 SIP/2.0" + CRLF +
@@ -77,8 +77,8 @@ CRLF +
         [Fact]
         public void TestSocketReadWithBytesToSkipTest()
         {
-            logger.LogDebug("--> " + System.Reflection.MethodBase.GetCurrentMethod().Name);
-            logger.BeginScope(System.Reflection.MethodBase.GetCurrentMethod().Name);
+            logger.LogDebug("--> {MethodName}", TestHelper.GetCurrentMethodName());
+            logger.BeginScope(TestHelper.GetCurrentMethodName());
 
             string testReceive =
 "            SUBSCRIBE sip:aaron@10.1.1.5 SIP/2.0" + CRLF +
@@ -119,8 +119,8 @@ CRLF + CRLF +
         [Fact]
         public void TestSocketReadWithTwoMessagesAndBytesToSkipTest()
         {
-            logger.LogDebug("--> " + System.Reflection.MethodBase.GetCurrentMethod().Name);
-            logger.BeginScope(System.Reflection.MethodBase.GetCurrentMethod().Name);
+            logger.LogDebug("--> {MethodName}", TestHelper.GetCurrentMethodName());
+            logger.BeginScope(TestHelper.GetCurrentMethodName());
 
             string testReceive =
 "            SUBSCRIBE sip:aaron@10.1.1.5 SIP/2.0" + CRLF +
@@ -160,8 +160,8 @@ CRLF +
             testConnection.ExtractSIPMessages(mockChannel, testConnection.RecvSocketArgs.Buffer, testReceiveBytes.Length);
             string remainingBytes = Encoding.UTF8.GetString(testConnection.RecvSocketArgs.Buffer, testConnection.RecvStartPosn, testConnection.RecvEndPosn - testConnection.RecvStartPosn);
 
-            logger.LogDebug("SocketBufferEndPosition=" + testConnection.RecvEndPosn + ".");
-            logger.LogDebug("SocketBuffer=" + remainingBytes + ".");
+            logger.LogDebug("SocketBufferEndPosition={SocketBufferEndPosition}.", testConnection.RecvEndPosn);
+            logger.LogDebug("SocketBuffer={remainingBytes}.", remainingBytes);
 
             Assert.True(sipMessages == 2, "The number of SIP messages parsed was incorrect.");
             Assert.True(708 == testConnection.RecvStartPosn, $"The receive buffer start position was incorrect, was {testConnection.RecvStartPosn}.");
@@ -175,8 +175,8 @@ CRLF +
         [Fact]
         public void ContentLengthParseWhenUpperCaseTest()
         {
-            logger.LogDebug("--> " + System.Reflection.MethodBase.GetCurrentMethod().Name);
-            logger.BeginScope(System.Reflection.MethodBase.GetCurrentMethod().Name);
+            logger.LogDebug("--> {MethodName}", TestHelper.GetCurrentMethodName());
+            logger.BeginScope(TestHelper.GetCurrentMethodName());
 
             string notifyRequest =
 "NOTIFY sip:10.1.1.5:62647;transport=tcp SIP/2.0" + CRLF +
@@ -205,8 +205,8 @@ CRLF +
         [Fact]
         public void ContentLengthParseWhenMixedCaseTest()
         {
-            logger.LogDebug("--> " + System.Reflection.MethodBase.GetCurrentMethod().Name);
-            logger.BeginScope(System.Reflection.MethodBase.GetCurrentMethod().Name);
+            logger.LogDebug("--> {MethodName}", TestHelper.GetCurrentMethodName());
+            logger.BeginScope(TestHelper.GetCurrentMethodName());
 
             string notifyRequest =
 "NOTIFY sip:10.1.1.5:62647;transport=tcp SIP/2.0" + CRLF +

@@ -10,10 +10,12 @@
 // BSD 3-Clause "New" or "Revised" License, see included LICENSE.md file.
 //-----------------------------------------------------------------------------
 
+using System;
 using System.Net;
 using System.Text;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
+using SIPSorcery.UnitTests;
 using Xunit;
 
 namespace SIPSorcery.SIP.UnitTests
@@ -34,12 +36,12 @@ namespace SIPSorcery.SIP.UnitTests
         [Fact]
         public void CreateChannelUnitTest()
         {
-            logger.LogDebug("--> " + System.Reflection.MethodBase.GetCurrentMethod().Name);
-            logger.BeginScope(System.Reflection.MethodBase.GetCurrentMethod().Name);
+            logger.LogDebug("--> {MethodName}", TestHelper.GetCurrentMethodName());
+            logger.BeginScope(TestHelper.GetCurrentMethodName());
 
             var udpChan = new SIPUDPChannel(IPAddress.Any, 0);
 
-            logger.LogDebug($"Listening end point {udpChan.ListeningSIPEndPoint}.");
+            logger.LogDebug("Listening end point {ListeningSIPEndPoint}.", udpChan.ListeningSIPEndPoint);
 
             udpChan.Close();
 
@@ -50,44 +52,61 @@ namespace SIPSorcery.SIP.UnitTests
         /// Tests that two SIP UDP channels can communicate.
         /// </summary>
         [Fact]
-        public async void InterChannelCommsUnitTest()
+        public async Task InterChannelCommsUnitTest()
         {
-            logger.LogDebug("--> " + System.Reflection.MethodBase.GetCurrentMethod().Name);
-            logger.BeginScope(System.Reflection.MethodBase.GetCurrentMethod().Name);
+            logger.LogDebug("--> {MethodName}", TestHelper.GetCurrentMethodName());
+            logger.BeginScope(TestHelper.GetCurrentMethodName());
 
             var udpChan1 = new SIPUDPChannel(IPAddress.Any, 0);
-            logger.LogDebug($"Listening end point {udpChan1.ListeningSIPEndPoint}.");
+            logger.LogDebug("Listening end point {ListeningSIPEndPoint}.", udpChan1.ListeningSIPEndPoint);
             var udpChan2 = new SIPUDPChannel(IPAddress.Any, 0);
-            logger.LogDebug($"Listening end point {udpChan2.ListeningSIPEndPoint}.");
+            logger.LogDebug("Listening end point {ListeningSIPEndPoint}.", udpChan2.ListeningSIPEndPoint);
 
-            TaskCompletionSource<bool> gotMessage = new TaskCompletionSource<bool>();
+            TaskCompletionSource<bool> gotMessage = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
             SIPEndPoint receivedFromEP = null;
             SIPEndPoint receivedOnEP = null;
             udpChan2.SIPMessageReceived = (SIPChannel sipChannel, SIPEndPoint localSIPEndPoint, SIPEndPoint remoteEndPoint, byte[] buffer) =>
             {
-                logger.LogDebug($"SIP message received from {remoteEndPoint}.");
-                logger.LogDebug($"SIP message received on {localSIPEndPoint}.");
-                logger.LogDebug(Encoding.UTF8.GetString(buffer));
+                logger.LogDebug("SIP message received from {remoteEndPoint}.", remoteEndPoint);
+                logger.LogDebug("SIP message received on {localSIPEndPoint}.", localSIPEndPoint);
+                logger.LogDebug("{Buffer}", Encoding.UTF8.GetString(buffer));
 
                 receivedFromEP = remoteEndPoint;
                 receivedOnEP = localSIPEndPoint;
-                gotMessage.SetResult(true);
+                // TrySet because the send is retried and more than one copy of the request may arrive.
+                gotMessage.TrySetResult(true);
                 return Task.CompletedTask;
             };
 
             var dstEndPoint = new SIPEndPoint(SIPProtocolsEnum.udp, IPAddress.Loopback, udpChan2.Port);
             var optionsReq = SIPRequest.GetRequest(SIPMethodsEnum.OPTIONS, new SIPURI(SIPSchemesEnum.sip, dstEndPoint));
 
-            logger.LogDebug($"Attempting to send OPTIONS request to {dstEndPoint}.");
+            logger.LogDebug("Attempting to send OPTIONS request to {dstEndPoint}.", dstEndPoint);
 
-            // Give sockets a chance to start up.
-            //await Task.Delay(500);
+            // UDP delivery is not guaranteed, even on loopback a datagram can be dropped under
+            // buffer pressure, and a single 1 second wait is not reliable on a loaded CI agent.
+            // Retry the send periodically until the message arrives or an overall deadline expires.
+            bool received = false;
+            var deadline = System.Diagnostics.Stopwatch.StartNew();
+            while (deadline.Elapsed < TimeSpan.FromSeconds(10))
+            {
+                await udpChan1.SendAsync(dstEndPoint, Encoding.UTF8.GetBytes(optionsReq.ToString()), false, null);
 
-            await udpChan1.SendAsync(dstEndPoint, Encoding.UTF8.GetBytes(optionsReq.ToString()), false, null);
+                var completed = await Task.WhenAny(gotMessage.Task, Task.Delay(500));
+                if (completed == gotMessage.Task)
+                {
+                    received = true;
+                    break;
+                }
 
-            bool res = gotMessage.Task.Wait(1000);
+                logger.LogDebug("No message received after {Elapsed:0.##}s, resending.", deadline.Elapsed.TotalSeconds);
+            }
 
-            Assert.True(res);
+            Assert.True(received, "Timeout waiting for message to be received.");
+
+            logger.LogDebug("Message received successfully.");
+
+            Assert.True(await gotMessage.Task);
             Assert.NotNull(receivedFromEP);
             Assert.NotNull(receivedOnEP);
             Assert.Equal(IPAddress.Loopback, receivedFromEP.Address);
@@ -105,18 +124,18 @@ namespace SIPSorcery.SIP.UnitTests
         [Fact]
         public void GetDefaultContactURIUnitTest()
         {
-            logger.LogDebug("--> " + System.Reflection.MethodBase.GetCurrentMethod().Name);
-            logger.BeginScope(System.Reflection.MethodBase.GetCurrentMethod().Name);
+            logger.LogDebug("--> {MethodName}", TestHelper.GetCurrentMethodName());
+            logger.BeginScope(TestHelper.GetCurrentMethodName());
 
             var udpChan = new SIPUDPChannel(IPAddress.Any, 0);
 
-            logger.LogDebug($"Listening end point {udpChan.ListeningSIPEndPoint}.");
+            logger.LogDebug("Listening end point {ListeningSIPEndPoint}.", udpChan.ListeningSIPEndPoint);
 
             var contactURI = udpChan.GetContactURI(SIPSchemesEnum.sip, new SIPEndPoint(udpChan.SIPProtocol, SIPChannel.InternetDefaultAddress, 0));
 
             Assert.NotNull(contactURI);
 
-            logger.LogDebug($"Contact URI: {contactURI}.");
+            logger.LogDebug("Contact URI: {contactURI}.", contactURI);
 
             udpChan.Close();
 

@@ -1,7 +1,9 @@
 ﻿using System;
 using System.Text;
 using Microsoft.Extensions.Logging;
+using Polyfills;
 using SIPSorcery.SIP;
+using SIPSorcery.UnitTests;
 using Xunit;
 
 namespace SIPSorcery.Net.UnitTests
@@ -21,8 +23,8 @@ namespace SIPSorcery.Net.UnitTests
         [Fact]
         public void ParseTest()
         {
-            logger.LogDebug("--> " + System.Reflection.MethodBase.GetCurrentMethod().Name);
-            logger.BeginScope(System.Reflection.MethodBase.GetCurrentMethod().Name);
+            logger.LogDebug("--> {MethodName}", TestHelper.GetCurrentMethodName());
+            logger.BeginScope(TestHelper.GetCurrentMethodName());
 
             SDPSecurityDescription c1 = SDPSecurityDescription.Parse("a=crypto:1 AES_CM_128_HMAC_SHA1_80  inline:WVNfX19zZW1jdGwgKCkgewkyMjA7fQp9CnVubGVz|2^20|1:4    FEC_ORDER=FEC_SRTP");
             Assert.Equal("a=crypto:1 AES_CM_128_HMAC_SHA1_80 inline:WVNfX19zZW1jdGwgKCkgewkyMjA7fQp9CnVubGVz|2^20|1:4 FEC_ORDER=FEC_SRTP", c1.ToString());
@@ -64,6 +66,88 @@ namespace SIPSorcery.Net.UnitTests
             Assert.Equal("PS1uQCVeeCFCanVmcjkpPywjNWhcYD0mXXtxaVBR", c3.KeyParams[0].KeySaltBase64);
             Assert.Null(c3.SessionParam);
 
+            // Simple inline key without optional parameters (RFC 4568 basic example)
+            SDPSecurityDescription c4 = SDPSecurityDescription.Parse("a=crypto:1 AES_CM_128_HMAC_SHA1_80 inline:PS1uQCVeeCFCanVmcjkpPywjNWhcYD0mXXtxaVBR");
+            Assert.Equal("a=crypto:1 AES_CM_128_HMAC_SHA1_80 inline:PS1uQCVeeCFCanVmcjkpPywjNWhcYD0mXXtxaVBR", c4.ToString());
+            Assert.Equal(1u, c4.Tag);
+            Assert.Equal(0u, c4.KeyParams[0].MkiLength);
+            Assert.Equal(0u, c4.KeyParams[0].MkiValue);
+            Assert.Equal(0ul, c4.KeyParams[0].LifeTime);
+            Assert.Null(c4.KeyParams[0].LifeTimeString);
+            Assert.Null(c4.SessionParam);
+
+            // Lifetime without MKI
+            SDPSecurityDescription c5 = SDPSecurityDescription.Parse("a=crypto:1 AES_CM_128_HMAC_SHA1_80 inline:PS1uQCVeeCFCanVmcjkpPywjNWhcYD0mXXtxaVBR|2^20");
+            Assert.Equal("a=crypto:1 AES_CM_128_HMAC_SHA1_80 inline:PS1uQCVeeCFCanVmcjkpPywjNWhcYD0mXXtxaVBR|2^20", c5.ToString());
+            Assert.Equal((ulong)Math.Pow(2, 20), c5.KeyParams[0].LifeTime);
+            Assert.Equal("2^20", c5.KeyParams[0].LifeTimeString);
+            Assert.Equal(0u, c5.KeyParams[0].MkiLength);
+
+            // MKI without lifetime
+            SDPSecurityDescription c6 = SDPSecurityDescription.Parse("a=crypto:1 AES_CM_128_HMAC_SHA1_80 inline:PS1uQCVeeCFCanVmcjkpPywjNWhcYD0mXXtxaVBR|1:32");
+            Assert.Equal("a=crypto:1 AES_CM_128_HMAC_SHA1_80 inline:PS1uQCVeeCFCanVmcjkpPywjNWhcYD0mXXtxaVBR|1:32", c6.ToString());
+            Assert.Equal(32u, c6.KeyParams[0].MkiLength);
+            Assert.Equal(1u, c6.KeyParams[0].MkiValue);
+            Assert.Equal(0ul, c6.KeyParams[0].LifeTime);
+
+            // AES_256_CM_HMAC_SHA1_80 crypto suite
+            SDPSecurityDescription c7 = SDPSecurityDescription.Parse("a=crypto:1 AES_256_CM_HMAC_SHA1_80 inline:d0RmdmcmVCspeEc3QGZiNWpVLFJhQX1cfHAwJSoj/Jl+xZQ4qrEUAzDN67dOAQ==");
+            Assert.Equal(SDPSecurityDescription.CryptoSuites.AES_256_CM_HMAC_SHA1_80, c7.CryptoSuite);
+            Assert.NotNull(c7.KeyParams[0].Key);
+            Assert.NotNull(c7.KeyParams[0].Salt);
+
+            // AEAD_AES_256_GCM crypto suite (different salt offset) - needs 32 byte key + 12 byte salt = 44 bytes
+            SDPSecurityDescription c8 = SDPSecurityDescription.Parse("a=crypto:1 AEAD_AES_256_GCM inline:d0RmdmcmVCspeEc3QGZiNWpVLFJhQX1cfHAwJSoj/Jl+xZQ4qrEUAzDN67dOAUm8tQ==");
+            Assert.Equal(SDPSecurityDescription.CryptoSuites.AEAD_AES_256_GCM, c8.CryptoSuite);
+            Assert.NotNull(c8.KeyParams[0].Key);
+            Assert.Equal(32, c8.KeyParams[0].Key.Length);
+            Assert.NotNull(c8.KeyParams[0].Salt);
+            Assert.Equal(12, c8.KeyParams[0].Salt.Length);
+
+            // Numeric lifetime format (instead of 2^n)
+            SDPSecurityDescription c9 = SDPSecurityDescription.Parse("a=crypto:1 AES_CM_128_HMAC_SHA1_80 inline:PS1uQCVeeCFCanVmcjkpPywjNWhcYD0mXXtxaVBR|1048576");
+            Assert.Equal((ulong)Math.Pow(2, 20), c9.KeyParams[0].LifeTime);
+
+            // Different session parameters - KDR
+            SDPSecurityDescription c10 = SDPSecurityDescription.Parse("a=crypto:1 AES_CM_128_HMAC_SHA1_80 inline:PS1uQCVeeCFCanVmcjkpPywjNWhcYD0mXXtxaVBR KDR=10");
+            Assert.NotNull(c10.SessionParam);
+            Assert.Equal(SDPSecurityDescription.SessionParameter.SrtpSessionParams.kdr, c10.SessionParam.SrtpSessionParam);
+            Assert.Equal(10ul, c10.SessionParam.Kdr);
+
+            // Different session parameters - WSH
+            SDPSecurityDescription c11 = SDPSecurityDescription.Parse("a=crypto:1 AES_CM_128_HMAC_SHA1_80 inline:PS1uQCVeeCFCanVmcjkpPywjNWhcYD0mXXtxaVBR WSH=128");
+            Assert.NotNull(c11.SessionParam);
+            Assert.Equal(SDPSecurityDescription.SessionParameter.SrtpSessionParams.wsh, c11.SessionParam.SrtpSessionParam);
+            Assert.Equal(128ul, c11.SessionParam.Wsh);
+
+            // Different session parameters - UNENCRYPTED_SRTP
+            SDPSecurityDescription c12 = SDPSecurityDescription.Parse("a=crypto:1 AES_CM_128_HMAC_SHA1_80 inline:PS1uQCVeeCFCanVmcjkpPywjNWhcYD0mXXtxaVBR UNENCRYPTED_SRTP");
+            Assert.NotNull(c12.SessionParam);
+            Assert.Equal(SDPSecurityDescription.SessionParameter.SrtpSessionParams.UNENCRYPTED_SRTP, c12.SessionParam.SrtpSessionParam);
+
+            // Different session parameters - UNENCRYPTED_SRTCP
+            SDPSecurityDescription c13 = SDPSecurityDescription.Parse("a=crypto:1 AES_CM_128_HMAC_SHA1_80 inline:PS1uQCVeeCFCanVmcjkpPywjNWhcYD0mXXtxaVBR UNENCRYPTED_SRTCP");
+            Assert.NotNull(c13.SessionParam);
+            Assert.Equal(SDPSecurityDescription.SessionParameter.SrtpSessionParams.UNENCRYPTED_SRTCP, c13.SessionParam.SrtpSessionParam);
+
+            // Different session parameters - UNAUTHENTICATED_SRTP
+            SDPSecurityDescription c14 = SDPSecurityDescription.Parse("a=crypto:1 AES_CM_128_HMAC_SHA1_80 inline:PS1uQCVeeCFCanVmcjkpPywjNWhcYD0mXXtxaVBR UNAUTHENTICATED_SRTP");
+            Assert.NotNull(c14.SessionParam);
+            Assert.Equal(SDPSecurityDescription.SessionParameter.SrtpSessionParams.UNAUTHENTICATED_SRTP, c14.SessionParam.SrtpSessionParam);
+
+            // High tag value (edge case)
+            SDPSecurityDescription c15 = SDPSecurityDescription.Parse("a=crypto:999999999 AES_CM_128_HMAC_SHA1_80 inline:PS1uQCVeeCFCanVmcjkpPywjNWhcYD0mXXtxaVBR");
+            Assert.Equal(999999999u, c15.Tag);
+
+            // Different lifetime exponents
+            SDPSecurityDescription c16 = SDPSecurityDescription.Parse("a=crypto:1 AES_CM_128_HMAC_SHA1_80 inline:PS1uQCVeeCFCanVmcjkpPywjNWhcYD0mXXtxaVBR|2^48");
+            Assert.Equal((ulong)Math.Pow(2, 48), c16.KeyParams[0].LifeTime);
+            Assert.Equal("2^48", c16.KeyParams[0].LifeTimeString);
+
+            // AES_192_CM_HMAC_SHA1_80 crypto suite
+            SDPSecurityDescription c17 = SDPSecurityDescription.Parse("a=crypto:1 AES_192_CM_HMAC_SHA1_80 inline:0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123");
+            Assert.Equal(SDPSecurityDescription.CryptoSuites.AES_192_CM_HMAC_SHA1_80, c17.CryptoSuite);
+
             Assert.Null(SDPSecurityDescription.Parse(null));
             Assert.Null(SDPSecurityDescription.Parse(""));
 
@@ -78,47 +162,48 @@ namespace SIPSorcery.Net.UnitTests
         [Fact]
         public void ParseCryptoSIPMessage()
         {
-            logger.LogDebug("--> " + System.Reflection.MethodBase.GetCurrentMethod().Name);
-            logger.BeginScope(System.Reflection.MethodBase.GetCurrentMethod().Name);
+            logger.LogDebug("--> {MethodName}", TestHelper.GetCurrentMethodName());
+            logger.BeginScope(TestHelper.GetCurrentMethodName());
 
             string sipMsg =
-            "INVITE sip:33@10.2.0.110:5061;transport=tls SIP/2.0" + CRLF +
-            "Via: SIP/2.0/TLS 10.2.19.102:58179;rport;branch=z9hG4bKPj9893426a070f4c26ab494ceb746836a6" + CRLF +
-            "Max-Forwards: 70" + CRLF +
-            "From: <sip:a@10.2.0.110>;tag=b0d60b9dda9043818dea1f0e8ff9667c" + CRLF +
-            "To: <sip:33@10.2.0.110>" + CRLF +
-            "Contact: <sip:a@10.2.19.102:58179;ob>" + CRLF +
-            "Call-ID: 6410bc5eb6724efd8717831ac2af5c35" + CRLF +
-            "CSeq: 9941 INVITE" + CRLF +
-            "Allow: PRACK, INVITE, ACK, BYE, CANCEL, UPDATE, INFO, SUBSCRIBE, NOTIFY, REFER, MESSAGE, OPTIONS" + CRLF +
-            "Supported: replaces, 100rel, timer, norefersub" + CRLF +
-            "Session-Expires: 1800" + CRLF +
-            "Min-SE: 90" + CRLF +
-            "User-Agent: MicroSIP/3.19.8" + CRLF +
-            "Content-Type: application/sdp" + CRLF +
-            "Content-Length:   720" + CRLF +
-            "" + CRLF +
-            "v=0" + CRLF +
-            "o=- 3784977145 3784977145 IN IP4 10.2.19.102" + CRLF +
-            "s=pjmedia" + CRLF +
-            "b=AS:84" + CRLF +
-            "t=0 0" + CRLF +
-            "a=X-nat:0" + CRLF +
-            "m=audio 4000 RTP/AVP 8 0 101" + CRLF +
-            "c=IN IP4 10.2.19.102" + CRLF +
-            "b=TIAS:64000" + CRLF +
-            "a=rtcp:4001 IN IP4 10.2.19.102" + CRLF +
-            "a=sendrecv" + CRLF +
-            "a=rtpmap:8 PCMA/8000" + CRLF +
-            "a=rtpmap:0 PCMU/8000" + CRLF +
-            "a=rtpmap:101 telephone-event/8000" + CRLF +
-            "a=fmtp:101 0-16" + CRLF +
-            "a=ssrc:370289018 cname:089912e5446c1847" + CRLF +
-            "a=crypto:1 AES_256_CM_HMAC_SHA1_80 inline:i/aQZXuTQXF8NcIPG/8ClKLXjzJZiZkFqNerJJaWtX9ShjuamMQgFocXUEkWCQ==" + CRLF +
-            "a=crypto:2 AES_256_CM_HMAC_SHA1_32 inline:WEXYOzOomH16+KpVRc8RKHkGUEW6DdvYHWSFKePVy9RzC5DB2Ciw+4t9huV8KA==" + CRLF +
-            "a=crypto:3 AES_CM_128_HMAC_SHA1_80 inline:6wGxadTFLGO9iKPSC8XfRQsOFDRFgJdmpBfdWp9r" + CRLF +
-            "a=crypto:4 AES_CM_128_HMAC_SHA1_32 inline:SdihJallj5frjwWc5yeXbMZlJSLlS+o2bkH3Jsle"
-            ;
+                """
+                INVITE sip:33@10.2.0.110:5061;transport=tls SIP/2.0
+                Via: SIP/2.0/TLS 10.2.19.102:58179;rport;branch=z9hG4bKPj9893426a070f4c26ab494ceb746836a6
+                Max-Forwards: 70
+                From: <sip:a@10.2.0.110>;tag=b0d60b9dda9043818dea1f0e8ff9667c
+                To: <sip:33@10.2.0.110>
+                Contact: <sip:a@10.2.19.102:58179;ob>
+                Call-ID: 6410bc5eb6724efd8717831ac2af5c35
+                CSeq: 9941 INVITE
+                Allow: PRACK, INVITE, ACK, BYE, CANCEL, UPDATE, INFO, SUBSCRIBE, NOTIFY, REFER, MESSAGE, OPTIONS
+                Supported: replaces, 100rel, timer, norefersub
+                Session-Expires: 1800
+                Min-SE: 90
+                User-Agent: MicroSIP/3.19.8
+                Content-Type: application/sdp
+                Content-Length:   720
+
+                v=0
+                o=- 3784977145 3784977145 IN IP4 10.2.19.102
+                s=pjmedia
+                b=AS:84
+                t=0 0
+                a=X-nat:0
+                m=audio 4000 RTP/AVP 8 0 101
+                c=IN IP4 10.2.19.102
+                b=TIAS:64000
+                a=rtcp:4001 IN IP4 10.2.19.102
+                a=sendrecv
+                a=rtpmap:8 PCMA/8000
+                a=rtpmap:0 PCMU/8000
+                a=rtpmap:101 telephone-event/8000
+                a=fmtp:101 0-16
+                a=ssrc:370289018 cname:089912e5446c1847
+                a=crypto:1 AES_256_CM_HMAC_SHA1_80 inline:i/aQZXuTQXF8NcIPG/8ClKLXjzJZiZkFqNerJJaWtX9ShjuamMQgFocXUEkWCQ==
+                a=crypto:2 AES_256_CM_HMAC_SHA1_32 inline:WEXYOzOomH16+KpVRc8RKHkGUEW6DdvYHWSFKePVy9RzC5DB2Ciw+4t9huV8KA==
+                a=crypto:3 AES_CM_128_HMAC_SHA1_80 inline:6wGxadTFLGO9iKPSC8XfRQsOFDRFgJdmpBfdWp9r
+                a=crypto:4 AES_CM_128_HMAC_SHA1_32 inline:SdihJallj5frjwWc5yeXbMZlJSLlS+o2bkH3Jsle
+                """.ReplaceLineEndings(CRLF);
 
             SIPMessageBuffer sipMessageBuffer = SIPMessageBuffer.ParseSIPMessage(Encoding.UTF8.GetBytes(sipMsg), null, null);
             Assert.True(sipMessageBuffer != null, "The SIP message not parsed correctly.");

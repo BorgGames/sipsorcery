@@ -1,4 +1,4 @@
-﻿//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
 // Filename: Initialise.cs
 //
 // Description: Assembly initialiser for SIPSorcery unit tests.
@@ -17,6 +17,7 @@ using System;
 using System.Collections.Generic;
 using System.Net;
 using System.Net.Sockets;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Serilog;
@@ -135,6 +136,11 @@ namespace SIPSorcery.UnitTests
         }
     }
 
+    public static class TestHelper
+    {
+        public static string GetCurrentMethodName([CallerMemberName] string methodName = default) => methodName;
+    }
+
     public class MockMediaSession : IMediaSession
     {
         private const string RTP_MEDIA_PROFILE = "RTP/AVP";
@@ -144,7 +150,10 @@ namespace SIPSorcery.UnitTests
         public bool IsClosed { get; private set; }
         public bool HasAudio => true;
         public bool HasVideo => false;
+        public bool HasText => false;
         public IPAddress RtpBindAddress => null;
+
+        public IPAddress RtpAdvertisedAddress { get; set; }
 
 #pragma warning disable 67
         public event Action<string> OnRtpClosed;
@@ -213,6 +222,11 @@ namespace SIPSorcery.UnitTests
         }
 
         public Task SendDtmf(byte tone, CancellationToken ct)
+        {
+            throw new NotImplementedException();
+        }
+
+        public Task SendText(string text, CancellationToken token)
         {
             throw new NotImplementedException();
         }

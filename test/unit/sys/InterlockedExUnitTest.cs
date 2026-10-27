@@ -1,4 +1,4 @@
-﻿//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
 // Filename: TypeExtensionsUnitTest.cs
 //
 // Description: Unit tests for methods in the TypeExtensions class.

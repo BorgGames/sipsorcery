@@ -1,40 +1,35 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFrameworks>net461;net8.0</TargetFrameworks>
+    <!-- Runnable frameworks only. netstandard2.0 was here as a compile-check, but it
+         cannot host a test run, so it only ever proved the test code compiled — which
+         the library's own netstandard2.0 build already establishes for its API surface.
+         The library still ships netstandard2.0; the tests just don't target it. -->
+    <TargetFrameworks>net8.0;net10.0;net472</TargetFrameworks>
     <IsPackable>false</IsPackable>
+    <TreatWarningsAsErrors>True</TreatWarningsAsErrors>
+    <LangVersion>14.0</LangVersion>
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Remove="TestResults\**" />
-    <EmbeddedResource Remove="TestResults\**" />
-    <None Remove="TestResults\**" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Compile Remove="net\RTSP\RTSPConnectionUnitTest.cs" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="16.10.0" />
-    <PackageReference Include="Serilog.Extensions.Logging" Version="8.0.0" />
-    <PackageReference Include="Serilog.Sinks.Console" Version="5.0.1" />
-    <PackageReference Include="Serilog.Sinks.Debug" Version="2.0.0" />
-    <PackageReference Include="Serilog.Sinks.XUnit" Version="3.0.5" />
-    <PackageReference Include="xunit" Version="2.4.2" />
-    <PackageReference Include="xunit.runner.console" Version="2.4.2">
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="Serilog.Extensions.Logging" />
+    <PackageReference Include="Serilog.Sinks.Console" />
+    <PackageReference Include="Serilog.Sinks.Debug" />
+    <PackageReference Include="Serilog.Sinks.XUnit" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.console">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="xunit.runner.visualstudio" Version="2.4.3">
+    <PackageReference Include="xunit.runner.visualstudio">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <DotNetCliToolReference Include="dotnet-xunit" Version="2.3.0" />
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\SIPSorcery.csproj" />
+    <ProjectReference Include="..\..\src\SIPSorcery\SIPSorcery.csproj" />
   </ItemGroup>
 
   <ItemGroup>

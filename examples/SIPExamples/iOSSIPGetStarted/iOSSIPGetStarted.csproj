@@ -68,7 +68,7 @@
     <Reference Include="System.Numerics.Vectors" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="Xamarin.Essentials" Version="1.5.3.2" />
+    <PackageReference Include="Xamarin.Essentials" />
   </ItemGroup>
   <ItemGroup>
     <ImageAsset Include="Assets.xcassets\AppIcon.appiconset\Contents.json">
@@ -135,7 +135,7 @@
     </Compile>
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\..\src\SIPSorcery.csproj">
+    <ProjectReference Include="..\..\..\src\SIPSorcery\SIPSorcery.csproj">
       <Project>{5d3ca7d1-7ee0-427a-b214-0ec9d8b48229}</Project>
       <Name>SIPSorcery</Name>
     </ProjectReference>

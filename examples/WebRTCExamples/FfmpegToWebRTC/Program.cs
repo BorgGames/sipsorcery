@@ -6,11 +6,11 @@
 //
 // Author(s):
 // Aaron Clauson (aaron@sipsorcery.com)
-// 
+//
 // History:
 // 08 Jul 2020	Aaron Clauson	Created, Dublin, Ireland.
 //
-// License: 
+// License:
 // BSD 3-Clause "New" or "Revised" License, see included LICENSE.md file.
 //-----------------------------------------------------------------------------
 
@@ -58,7 +58,8 @@ namespace SIPSorcery.Examples
     {
         private const uint SSRC_REMOTE_VIDEO = 38106908;
         private const int WEBSOCKET_PORT = 8081;
-        private const string FFMPEG_DEFAULT_COMMAND = "ffmpeg -re -f lavfi -i testsrc=size=640x480:rate=10 -vcodec {0} -pix_fmt yuv420p -strict experimental -g 1 -ssrc {2} -f rtp rtp://127.0.0.1:{1} -sdp_file {3}";
+
+        private const string FFMPEG_DEFAULT_COMMAND = "ffmpeg -re -f lavfi -i testsrc=size=640x480:rate=10 {0} -pix_fmt yuv420p -strict experimental -g 1 -ssrc {2} -f rtp rtp://127.0.0.1:{1} -sdp_file {3}";
         private const string FFMPEG_SDP_FILE = "ffmpeg.sdp";
         private const int FFMPEG_DEFAULT_RTP_PORT = 5020;
 
@@ -67,12 +68,14 @@ namespace SIPSorcery.Examples
         /// - vp8
         /// - vp9
         /// - h264
+        /// - libx265
         /// Note if you change this option you will need to delete the ffmpeg.sdp file.
         /// </summary>
-        private const string FFMPEG_VP8_CODEC = "vp8";
-        private const string FFMPEG_VP9_CODEC = "vp9";
-        private const string FFMPEG_H264_CODEC = "h264";
-        private const string FFMPEG_DEFAULT_CODEC = FFMPEG_VP8_CODEC;
+        private const string FFMPEG_VP8_CODEC = "-vcodec vp8";
+        private const string FFMPEG_VP9_CODEC = "-vcodec vp9";
+        private const string FFMPEG_H264_CODEC = "-vcodec h264";
+        private const string FFMPEG_H265_CODEC = "-c:v libx265";
+        private const string FFMPEG_DEFAULT_CODEC = FFMPEG_H265_CODEC;
 
         private static Microsoft.Extensions.Logging.ILogger logger = NullLogger.Instance;
 
@@ -86,17 +89,16 @@ namespace SIPSorcery.Examples
 
             if (args?.Length > 0)
             {
-                switch(args[0].ToLower())
+                if (string.Equals(args[0], FFMPEG_VP8_CODEC, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(args[0], FFMPEG_VP9_CODEC, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(args[0], FFMPEG_H264_CODEC, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(args[0], FFMPEG_H265_CODEC, StringComparison.OrdinalIgnoreCase))
                 {
-                    case FFMPEG_VP8_CODEC:
-                    case FFMPEG_VP9_CODEC:
-                    case FFMPEG_H264_CODEC:
-                        videoCodec = args[0].ToLower();
-                        break;
-
-                    default:
-                        Console.WriteLine($"Video codec option not recognised. Valid values are {FFMPEG_VP8_CODEC}, {FFMPEG_VP9_CODEC} and {FFMPEG_H264_CODEC}. Using {videoCodec}.");
-                        break;
+                    videoCodec = args[0].ToLower();
+                }
+                else
+                {
+                    Console.WriteLine($"Video codec option not recognised. Valid values are {FFMPEG_VP8_CODEC}, {FFMPEG_VP9_CODEC} and {FFMPEG_H264_CODEC}. Using {videoCodec}.");
                 }
             }
 
@@ -104,7 +106,7 @@ namespace SIPSorcery.Examples
 
             logger = AddConsoleLogger();
 
-            string ffmpegCommand = String.Format(FFMPEG_DEFAULT_COMMAND, videoCodec, FFMPEG_DEFAULT_RTP_PORT, SSRC_REMOTE_VIDEO, FFMPEG_SDP_FILE);
+            string ffmpegCommand = $"ffmpeg -re -f lavfi -i testsrc=size=640x480:rate=10 {videoCodec} -pix_fmt yuv420p -strict experimental -g 1 -ssrc {SSRC_REMOTE_VIDEO} -f rtp rtp://127.0.0.1:{FFMPEG_DEFAULT_RTP_PORT} -sdp_file {FFMPEG_SDP_FILE}";
 
             // Start web socket.
             Console.WriteLine("Starting web socket server...");
@@ -119,11 +121,11 @@ namespace SIPSorcery.Examples
                 client.OnMessageReceived += WebSocketMessageReceived;
             });
 
-            if(File.Exists(FFMPEG_SDP_FILE))
+            if (File.Exists(FFMPEG_SDP_FILE))
             {
-                var sdp = SDP.ParseSDPDescription(File.ReadAllText(FFMPEG_SDP_FILE));
-                var videoAnn = sdp.Media.Single(x => x.Media == SDPMediaTypesEnum.video);
-                if(videoAnn.MediaFormats.Values.First().Name().ToLower() != videoCodec)
+
+                string codecName = GetCodecName();
+                if (!videoCodec.Contains(codecName))
                 {
                     logger.LogWarning($"Removing existing ffmpeg SDP file {FFMPEG_SDP_FILE} due to codec mismatch.");
                     File.Delete(FFMPEG_SDP_FILE);
@@ -152,6 +154,20 @@ namespace SIPSorcery.Examples
             await Task.Run(() => OnKeyPress(exitCts.Token));
 
             _webSocketServer.Stop();
+        }
+
+        private static string GetCodecName()
+        {
+            var sdp = SDP.ParseSDPDescription(File.ReadAllText(FFMPEG_SDP_FILE));
+            var videoAnn = sdp.Media.Single(x => x.Media == SDPMediaTypesEnum.video);
+            var codec = videoAnn.MediaFormats.Values.First().Name().ToLower();
+            if (codec == "h265")
+            {
+                return "libx265";
+            }else
+            {
+                return codec;
+            }
         }
 
         private static async Task StartFfmpegListener(string sdpPath, CancellationToken cancel)
@@ -214,7 +230,6 @@ namespace SIPSorcery.Examples
             await pc.setLocalDescription(offerInit);
 
             logger.LogDebug($"Sending SDP offer to client {context.UserEndPoint}.");
-
             context.WebSocket.Send(offerInit.sdp);
 
             return pc;
@@ -277,7 +292,7 @@ namespace SIPSorcery.Examples
                 {
                     logger.LogDebug("ICE Candidate: " + message);
 
-                    if (string.IsNullOrWhiteSpace(message) || message.Trim().ToLower() == SDP.END_ICE_CANDIDATES_ATTRIBUTE)
+                    if (string.IsNullOrWhiteSpace(message) || message.AsSpan().Trim().Equals(SDP.END_ICE_CANDIDATES_ATTRIBUTE, StringComparison.OrdinalIgnoreCase))
                     {
                         logger.LogDebug("End of candidates message received.");
                     }

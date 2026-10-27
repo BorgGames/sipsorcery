@@ -19,6 +19,7 @@ using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using Microsoft.Extensions.Logging;
+using SIPSorcery.UnitTests;
 using Xunit;
 
 namespace SIPSorcery.Sys.IntegrationTests
@@ -43,8 +44,8 @@ namespace SIPSorcery.Sys.IntegrationTests
         [Trait("Category", "IPv6")]
         public void GetLocalForInternetIPv6AdressUnitTest()
         {
-            logger.LogDebug("--> " + System.Reflection.MethodBase.GetCurrentMethod().Name);
-            logger.BeginScope(System.Reflection.MethodBase.GetCurrentMethod().Name);
+            logger.LogDebug("--> {MethodName}", TestHelper.GetCurrentMethodName());
+            logger.BeginScope(TestHelper.GetCurrentMethodName());
 
             if (Socket.OSSupportsIPv6)
             {
@@ -53,7 +54,7 @@ namespace SIPSorcery.Sys.IntegrationTests
                 {
                     var localAddress = NetServices.GetLocalAddressForRemote(IPAddress.Parse("2606:db00:0:62b::2"));
 
-                    logger.LogDebug($"Local address {localAddress}.");
+                    logger.LogDebug("Local address {LocalAddress}.", localAddress);
 
                     Assert.NotNull(localAddress);
                 }

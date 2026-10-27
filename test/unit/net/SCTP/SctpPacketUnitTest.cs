@@ -13,16 +13,19 @@
 // BSD 3-Clause "New" or "Revised" License, see included LICENSE.md file.
 //-----------------------------------------------------------------------------
 
+using System;
 using System.Linq;
+using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using SIPSorcery.Sys;
+using SIPSorcery.UnitTests;
 using Xunit;
 
 namespace SIPSorcery.Net.UnitTests
 {
     public class SctpPacketUnitTest
     {
-        private ILogger logger = null;
+        private readonly ILogger logger;
 
         public SctpPacketUnitTest(Xunit.Abstractions.ITestOutputHelper output)
         {
@@ -71,7 +74,7 @@ namespace SIPSorcery.Net.UnitTests
 
             foreach(var unrecognisedParam in initChunk.UnrecognizedPeerParameters)
             {
-                logger.LogDebug($"Chunk Unrecognised Parameter {unrecognisedParam.ParameterType}.");
+                logger.LogDebug("Chunk Unrecognised Parameter {ParameterType}.", unrecognisedParam.ParameterType);
             }
         }
 
@@ -202,6 +205,44 @@ namespace SIPSorcery.Net.UnitTests
         }
 
         /// <summary>
+        /// Tests that a recognised SCTP chunk with a declared length of zero is rejected rather
+        /// than sending the chunk parser into an infinite loop. The chunk walking logic advances
+        /// the buffer cursor by the declared chunk length, so a zero length previously left the
+        /// cursor stationary and the parse loop spinning forever. This packet is the valid
+        /// COOKIE ACK from <see cref="ParseUsrSctpCookieAckPacket"/> with the chunk length field
+        /// zeroed. Reported by Team Atlanta.
+        /// </summary>
+        [Fact]
+        public async Task ParseZeroLengthChunkDoesNotHang()
+        {
+            byte[] buffer = {
+                0x00, 0x07, 0xdf, 0x90, 0xe3, 0x1c, 0x55, 0x36, 0xb2, 0x04, 0xdf, 0x21, 0x0b, 0x00, 0x00, 0x00 };
+
+            // Run the parse on a worker task with a timeout so that a regression manifests as a
+            // test failure rather than a hung test run.
+            var parseTask = Task.Run(() => SctpPacket.Parse(buffer));
+
+            var completed = await Task.WhenAny(parseTask, Task.Delay(TimeSpan.FromSeconds(2)));
+
+            Assert.True(completed == parseTask, "SctpPacket.Parse did not return, the zero-length chunk parser hang has regressed.");
+            await Assert.ThrowsAsync<ApplicationException>(() => parseTask);
+        }
+
+        [Theory]
+        [InlineData(0x0b, 0)] // Recognised COOKIE ACK with no progress.
+        [InlineData(0x0b, 3)] // Shorter than the common chunk header.
+        [InlineData(0x0b, 8)] // Exceeds the remaining packet buffer.
+        [InlineData(0xff, 0)] // Unknown chunks must also make progress.
+        public void PacketViewRejectsInvalidChunkLengths(byte chunkType, int chunkLength)
+        {
+            var buffer = new byte[SctpHeader.SCTP_HEADER_LENGTH + SctpChunk.SCTP_CHUNK_HEADER_LENGTH];
+            buffer[SctpHeader.SCTP_HEADER_LENGTH] = chunkType;
+            buffer[SctpHeader.SCTP_HEADER_LENGTH + 3] = (byte)chunkLength;
+
+            Assert.Throws<ApplicationException>(() => { SctpPacketView.Parse(buffer); });
+        }
+
+        /// <summary>
         /// Tests that an SCTP packet with an INIT chunk can be successfully serialised and parsed.
         /// </summary>
         [Fact]
@@ -226,8 +267,8 @@ namespace SIPSorcery.Net.UnitTests
 
             var rndTripBuffer = initPkt.GetBytes();
 
-            logger.LogDebug($"Before: {buffer.HexStr()}");
-            logger.LogDebug($"After : {rndTripBuffer.HexStr()}");
+            logger.LogDebug("Before: {BufferHexStr}", buffer.HexStr());
+            logger.LogDebug("After : {RndTripBufferHexStr}", rndTripBuffer.HexStr());
 
             Assert.True(SctpPacket.IsValid(rndTripBuffer, requiredTag: 0x0U));
 
@@ -299,8 +340,8 @@ namespace SIPSorcery.Net.UnitTests
 
             var rndTripBuffer = heartbeatPkt.GetBytes();
 
-            logger.LogDebug($"Before: {buffer.HexStr()}");
-            logger.LogDebug($"After : {rndTripBuffer.HexStr()}");
+            logger.LogDebug("Before: {BufferHexStr}", buffer.HexStr());
+            logger.LogDebug("After : {RndTripBufferHexStr}", rndTripBuffer.HexStr());
 
             Assert.True(SctpPacket.IsValid(rndTripBuffer, requiredTag: 0x054a3af0U));
 
@@ -366,8 +407,8 @@ namespace SIPSorcery.Net.UnitTests
 
             var rndTripBuffer = dataPkt.GetBytes();
 
-            logger.LogDebug($"Before: {buffer.HexStr()}");
-            logger.LogDebug($"After : {rndTripBuffer.HexStr()}");
+            logger.LogDebug("Before: {BufferHexStr}", buffer.HexStr());
+            logger.LogDebug("After : {RndTripBufferHexStr}", rndTripBuffer.HexStr());
 
             Assert.True(SctpPacket.IsValid(rndTripBuffer, requiredTag: 0x2e0b82c7U));
 
@@ -395,8 +436,8 @@ namespace SIPSorcery.Net.UnitTests
         [Fact]
         public void ParseUsrSctpAbortPacket()
         {
-            logger.LogDebug("--> " + System.Reflection.MethodBase.GetCurrentMethod().Name);
-            logger.BeginScope(System.Reflection.MethodBase.GetCurrentMethod().Name);
+            logger.LogDebug("--> {MethodName}", TestHelper.GetCurrentMethodName());
+            logger.BeginScope(TestHelper.GetCurrentMethodName());
 
             byte[] buffer = {
                 0x00, 0x07, 0x11, 0x5c, 0x93, 0xc9, 0xd9, 0x8a, 0x19, 0x82, 0x31, 0xc1, 0x06, 0x00, 0x00, 0x3b,
@@ -421,7 +462,7 @@ namespace SIPSorcery.Net.UnitTests
             var abortChunk = sctpPkt.Chunks.First() as SctpAbortChunk;
             var cause = (SctpErrorProtocolViolation)(abortChunk.ErrorCauses.First());
 
-            logger.LogDebug($"ABORT reason={cause.AdditionalInformation}.");
+            logger.LogDebug("ABORT reason={Reason}.", cause.AdditionalInformation);
 
             Assert.Single(abortChunk.ErrorCauses);
             Assert.Equal("Cum ack 00000000 greater or equal than TSN c6e3ad3c", cause.AdditionalInformation);

@@ -38,11 +38,13 @@ namespace SIPSorcery.Net.UnitTests
             
             var offer = pcSrc.createOffer(new RTCOfferOptions());
 
-            Assert.NotNull(offer.toJSON());
+            var offerJson = offer.toJSON();
 
-            logger.LogDebug($"offer: {offer.toJSON()}");
+            Assert.NotNull(offerJson);
 
-            var parseResult = RTCSessionDescriptionInit.TryParse(offer.toJSON(), out var init);
+            logger.LogDebug("offer: {OfferJson}", offerJson);
+
+            var parseResult = RTCSessionDescriptionInit.TryParse(offerJson, out var init);
 
             Assert.True(parseResult);
 
@@ -67,6 +69,40 @@ namespace SIPSorcery.Net.UnitTests
 
             Assert.Equal(RTCSdpType.answer, init.type);
             Assert.NotNull(init.sdp);
+        }
+
+        /// <summary>
+        /// Tests that values without JSON content are rejected without producing a description.
+        /// </summary>
+        [Theory]
+        [InlineData(null)]
+        [InlineData("")]
+        [InlineData(" \t\r\n")]
+        public void TryParseEmptyJsonUnitTest(string json)
+        {
+            Assert.False(RTCSessionDescriptionInit.TryParse(json, out var init));
+            Assert.Null(init);
+        }
+
+        /// <summary>
+        /// Tests that a JSON null value is rejected.
+        /// </summary>
+        [Fact]
+        public void TryParseJsonNullUnitTest()
+        {
+            Assert.False(RTCSessionDescriptionInit.TryParse("null", out var init));
+            Assert.Null(init);
+        }
+
+        /// <summary>
+        /// Tests that the required SDP property must be present.
+        /// </summary>
+        [Fact]
+        public void TryParseJsonWithoutSdpUnitTest()
+        {
+            Assert.False(RTCSessionDescriptionInit.TryParse("{\"type\":\"offer\"}", out var init));
+            Assert.NotNull(init);
+            Assert.Null(init.sdp);
         }
     }
 }

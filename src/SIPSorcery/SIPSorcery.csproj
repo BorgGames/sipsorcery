@@ -1,0 +1,135 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <None Remove="core\SIPEvents\Dialog\EventDialogSchema.xsd" />
+    <None Remove="core\SIPEvents\Presence\PIDFSchema.xsd" />
+    <None Remove="media\Macroform_-_Simplicity.raw" />
+    <None Remove="media\testpattern.i420" />
+    <EmbeddedResource Include="media\Macroform_-_Simplicity.raw" />
+    <EmbeddedResource Include="media\testpattern.i420" />
+    <None Include="icon.png" Pack="true" PackagePath="" />
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+    <None Include="..\..\LICENSE.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Concentus" />
+    <PackageReference Include="BouncyCastle.Cryptography" />
+    <PackageReference Include="DnsClient" />
+    <PackageReference Include="Small" />
+    <PackageReference Include="Polyfill">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="SIPSorcery.WebSocketSharp" />
+    <PackageReference Include="System.Net.WebSockets.Client" />
+    <PackageReference Include="Microsoft.SourceLink.GitHub" PrivateAssets="All" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' == 'net462' OR '$(TargetFramework)' == 'netstandard2.0'">
+    <PackageReference Include="System.Memory" />
+    <PackageReference Include="Microsoft.Bcl.HashCode" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' == 'net462'">
+    <PackageReference Include="System.ValueTuple" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SIPSorceryMedia.Abstractions\SIPSorceryMedia.Abstractions.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFrameworks>netstandard2.0;netstandard2.1;netcoreapp3.1;net462;net5.0;net6.0;net8.0;net9.0;net10.0</TargetFrameworks>
+    <LangVersion>14.0</LangVersion>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Nullable>annotations</Nullable>
+    <SuppressTfmSupportBuildWarnings>true</SuppressTfmSupportBuildWarnings>
+    <NoWarn>$(NoWarn);SYSLIB0050</NoWarn>
+    <TreatWarningsAsErrors>True</TreatWarningsAsErrors>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- Disable warning for missing XML doc comments. -->
+    <NoWarn>$(NoWarn);CS1591;CS1573;CS1587</NoWarn>
+    <Authors>Aaron Clauson, Christophe Irles, Rafael Soares &amp; Contributors</Authors>
+    <Copyright>Copyright © 2010-2026 Aaron Clauson</Copyright>
+    <PackageLicenseFile>LICENSE.md</PackageLicenseFile>
+    <Title>SIPSorcery</Title>
+    <Summary>A cross platform C# .NET library for SIP, VoIP and WebRTC.</Summary>
+    <Description>Real-time communications library with full support for the Session Initiation Protocol (SIP) and WebRTC. No wrappers and no native libraries required.
+    </Description>
+    <Company>SIP Sorcery PTY LTD</Company>
+    <Product>SIPSorcery</Product>
+    <PackageId>SIPSorcery</PackageId>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <PackageProjectUrl>https://github.com/sipsorcery-org/sipsorcery/tree/master/src/SIPSorcery</PackageProjectUrl>
+    <PackageIconUrl>http://www.sipsorcery.com/mainsite/favicon.ico</PackageIconUrl>
+    <PackageIcon>icon.png</PackageIcon>
+    <RepositoryUrl>https://github.com/sipsorcery-org/sipsorcery</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <RepositoryBranch>master</RepositoryBranch>
+    <PolyArgumentExceptions>true</PolyArgumentExceptions>
+    <PackageTags>SIP WebRTC VoIP RTP SDP STUN ICE SIPSorcery</PackageTags>
+    <PackageReleaseNotes>-v10.0.18-pre: Bug fixes. New video Forward Error Correction (FEC) RFC2198 and RFC5109, new SIP Real-time Text (RTT) RFC4103 experimental features. 
+-v10.0.17: Bug fixes, mainly in SIP stack.
+-v10.0.16: The SIP TLS channel now defaults to validating remote certificates. This is a BREAKING change if you use self signed certificates and you will neeed to explicitly set the bypass valdiation property on the channel to true.
+-v10.0.15: Vulnerabiliy fixes for GHSA-jwjp-4649-v8jp, GHSA-pfvm-w89x-94jw and GHSA-mwf8-6m4x-pgmm. TurnServer marked experimental (diagnostic SIPSORCERY001); it is intended for development and testing, not production. Suppress the diagnostic to continue using it.
+-v10.0.13: Fix license file.
+-v10.0.12: Fix for SCTP packet zero length infinite loop vulnerability.
+-v10.0.11: Add support for additional video codecs (VP9, AV1, H265). WHIP and WHEP support. Bug fixes.
+-v10.0.10: Bug fixes. Adjust restriction on remote peer endpoints when blocking WebRTC RTP traffic.
+-v10.0.9: Fix for RTP and STUN packet minimum length DoS vulnerability.
+-v10.0.8: Bug fixes.
+-v10.0.7: Network address change fix for Unity.
+-v10.0.6: Bug fixes.
+-v10.0.5: Stable release. Bug fixes.
+-v10.0.4-pre: New SRTP and DTLS implementation (huge thanks to @jimm98y).
+-v10.0.3: Removed null SRTP ciphers.
+-v10.0.2: Removed use of master key index for SRTP.
+-v10.0.1: Support for .NET 10.0 added.
+-v8.0.23: Bug fixes.
+-v8.0.22: Stable release.
+-v8.0.21-pre: Improvements to OPUS encoder wiring.
+-v8.0.20-pre: Improvements to the audio pipeline to avoid consumers needing to handle raw RTP packets.
+-v8.0.15-pre: BouncyCastle update (thanks to @joaoladeiraext).
+-v8.0.14: Fix for OPUS codec using multiple channels.
+-v8.0.13: Added ASP.NET web socket signalling option for WebRTC. Bug fixes.
+-v8.0.12: Bug fixes.
+-v8.0.11: Real-time text (thanks to @xBasov). Bug fixes.
+-v8.0.10: H265 and MJEG packetisation (thanks to @Drescher86), RTCP feedback improvements (thanks to @ispysoftware).
+-v8.0.9: Minor improvements and bug fixes.
+-v8.0.7: Bug fixes and all sipsorcery packages release.
+-v8.0.6: Nuget publish.
+-v8.0.4: Bug fixes.
+-v8.0.3: Bug fixes.
+-v8.0.1-pre: Performance improvements (thanks to @weltmeyer). Add ECDSA as default option for WebRTC DTLS.
+-v8.0.0: RTP header extension improvements (thanks to @ChristopheI). Major version to 8 to reflect highest .net runtime supported.</PackageReleaseNotes>
+    <NeutralLanguage>en</NeutralLanguage>
+    <Version>10.0.18-pre</Version>
+    <AssemblyVersion>10.0.18</AssemblyVersion>
+    <FileVersion>10.0.18</FileVersion>
+  </PropertyGroup>
+
+  <PropertyGroup Label="PackageValidation">
+    <!-- Diff the packed assemblies against the last published package so that accidental
+         binary-breaking changes (e.g. replacing Foo() with Foo(string x = null)) fail the
+         build instead of shipping. Runs on 'dotnet pack'. Deliberate, already-shipped
+         breaks are listed in CompatibilitySuppressions.xml with a reason. -->
+    <EnablePackageValidation>true</EnablePackageValidation>
+    <PackageValidationBaselineVersion>10.0.18-pre</PackageValidationBaselineVersion>
+  </PropertyGroup>
+
+  <PropertyGroup Label="SourceLink">
+    <!-- Optional: Publish the repository URL in the built .nupkg (in the NuSpec <Repository> element) -->
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+
+    <!-- Optional: Embed source files that are not tracked by the source control manager in the PDB -->
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+
+    <!-- Optional: Build symbol package (.snupkg) to distribute the PDB containing Source Link -->
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
+  </PropertyGroup>
+
+</Project>

@@ -13,6 +13,7 @@
 //using System.Xml.Linq;
 //using System.Xml.Schema;
 using Microsoft.Extensions.Logging;
+using SIPSorcery.UnitTests;
 using Xunit;
 
 namespace SIPSorcery.SIP.UnitTests
@@ -39,8 +40,8 @@ namespace SIPSorcery.SIP.UnitTests
         /// Commented out due to excluding xsd resources files that were breaking the WSL build. AC 14 Nov 2019
         //public void InvalidXMLUnitTest()
         //{
-        //    logger.LogDebug("--> " + System.Reflection.MethodBase.GetCurrentMethod().Name);
-        //    logger.BeginScope(System.Reflection.MethodBase.GetCurrentMethod().Name);
+        //    logger.LogDebug("--> {MethodName}", TestHelper.GetCurrentMethodName());
+        //    logger.BeginScope(TestHelper.GetCurrentMethodName());
 
         //    if (m_eventDialogSchema == null)
         //    {
@@ -82,8 +83,8 @@ namespace SIPSorcery.SIP.UnitTests
         //[Ignore("Use this method to validate dialog XML packages against the RFC schema. It takes a little bit of time to load the schema.")]
         //public void ValidXMLUnitTest()
         //{
-        //    logger.LogDebug("--> " + System.Reflection.MethodBase.GetCurrentMethod().Name);
-        //    logger.BeginScope(System.Reflection.MethodBase.GetCurrentMethod().Name);
+        //    logger.LogDebug("--> {MethodName}", TestHelper.GetCurrentMethodName());
+        //    logger.BeginScope(TestHelper.GetCurrentMethodName());
 
         //    if (m_eventDialogSchema == null)
         //    {
@@ -134,14 +135,13 @@ namespace SIPSorcery.SIP.UnitTests
         [Fact]
         public void GetAsXMLStringUnitTest()
         {
-            logger.LogDebug("--> " + System.Reflection.MethodBase.GetCurrentMethod().Name);
-            logger.BeginScope(System.Reflection.MethodBase.GetCurrentMethod().Name);
+            logger.LogDebug("--> {MethodName}", TestHelper.GetCurrentMethodName());
+            logger.BeginScope(TestHelper.GetCurrentMethodName());
 
             SIPEventDialogInfo dialogInfo = new SIPEventDialogInfo(0, SIPEventDialogInfoStateEnum.full, SIPURI.ParseSIPURI("sip:test@test.com"));
             dialogInfo.DialogItems.Add(new SIPEventDialog("abcde", "terminated", 487, SIPEventDialogStateEvent.Cancelled, 2));
 
-            logger.LogDebug(dialogInfo.ToXMLText());
-
+            logger.LogDebug("{DialogInfo}", dialogInfo.ToXMLText());
             logger.LogDebug("-----------------------------------------");
         }
 
@@ -151,16 +151,10 @@ namespace SIPSorcery.SIP.UnitTests
         [Fact]
         public void ParseFromXMLStringUnitTest()
         {
-            logger.LogDebug("--> " + System.Reflection.MethodBase.GetCurrentMethod().Name);
-            logger.BeginScope(System.Reflection.MethodBase.GetCurrentMethod().Name);
+            logger.LogDebug("--> {MethodName}", TestHelper.GetCurrentMethodName());
+            logger.BeginScope(TestHelper.GetCurrentMethodName());
 
-            string eventDialogInfoStr = "<?xml version='1.0' encoding='utf-16'?>" +
-                 "<dialog-info version='1' state='full' entity='sip:test@test.com' xmlns='urn:ietf:params:xml:ns:dialog-info'>" +
-                 " <dialog id='as7d900as8' call-id='a84b4c76e66710' local-tag='1928301774' direction='initiator'>" +
-                 "  <state event='remote-bye' code='486'>terminated</state>" +
-                 "  <duration>13</duration>" +
-                 " </dialog>" +
-                 "</dialog-info>";
+            string eventDialogInfoStr = $"<?xml version='1.0' encoding='utf-16'?><dialog-info version='1' state='full' entity='sip:test@test.com' xmlns='urn:ietf:params:xml:ns:dialog-info'> <dialog id='as7d900as8' call-id='a84b4c76e66710' local-tag='1928301774' direction='initiator'>  <state event='remote-bye' code='486'>terminated</state>  <duration>13</duration> </dialog></dialog-info>";
 
             SIPEventDialogInfo dialogInfo = SIPEventDialogInfo.Parse(eventDialogInfoStr);
 
@@ -187,19 +181,10 @@ namespace SIPSorcery.SIP.UnitTests
         [Fact]
         public void ParseFromXMLStringMultiDialogsUnitTest()
         {
-            logger.LogDebug("--> " + System.Reflection.MethodBase.GetCurrentMethod().Name);
-            logger.BeginScope(System.Reflection.MethodBase.GetCurrentMethod().Name);
+            logger.LogDebug("--> {MethodName}", TestHelper.GetCurrentMethodName());
+            logger.BeginScope(TestHelper.GetCurrentMethodName());
 
-            string eventDialogInfoStr = "<?xml version='1.0' encoding='utf-16'?>" +
-                 "<dialog-info version='1' state='full' entity='sip:test@test.com' xmlns='urn:ietf:params:xml:ns:dialog-info'>" +
-                 " <dialog id='as7d900as8' call-id='a84b4c76e66710' local-tag='1928301774' direction='initiator'>" +
-                 "  <state event='remote-bye' code='486'>terminated</state>" +
-                 "  <duration>13</duration>" +
-                 " </dialog>" +
-                 " <dialog id='4353458'>" +
-                 "  <state>progressing</state>" +
-                 " </dialog>" +
-                 "</dialog-info>";
+            string eventDialogInfoStr = $"<?xml version='1.0' encoding='utf-16'?><dialog-info version='1' state='full' entity='sip:test@test.com' xmlns='urn:ietf:params:xml:ns:dialog-info'> <dialog id='as7d900as8' call-id='a84b4c76e66710' local-tag='1928301774' direction='initiator'>  <state event='remote-bye' code='486'>terminated</state>  <duration>13</duration> </dialog> <dialog id='4353458'>  <state>progressing</state> </dialog></dialog-info>";
 
             SIPEventDialogInfo dialogInfo = SIPEventDialogInfo.Parse(eventDialogInfoStr);
 
@@ -209,8 +194,7 @@ namespace SIPSorcery.SIP.UnitTests
             Assert.True(dialogInfo.DialogItems[1].ID == "4353458", "The parsed event dialog event id for the second dialog was incorrect.");
             Assert.True(dialogInfo.DialogItems[1].State == "progressing", "The parsed event dialog event state for the second dialog was incorrect.");
 
-            logger.LogDebug(dialogInfo.ToXMLText());
-
+            logger.LogDebug("{DialogInfo}", dialogInfo.ToXMLText());
             logger.LogDebug("-----------------------------------------");
         }
 
@@ -221,25 +205,10 @@ namespace SIPSorcery.SIP.UnitTests
         [Fact]
         public void ParseFromXMLStringDialogWithParticipantsUnitTest()
         {
-            logger.LogDebug("--> " + System.Reflection.MethodBase.GetCurrentMethod().Name);
-            logger.BeginScope(System.Reflection.MethodBase.GetCurrentMethod().Name);
+            logger.LogDebug("--> {MethodName}", TestHelper.GetCurrentMethodName());
+            logger.BeginScope(TestHelper.GetCurrentMethodName());
 
-            string eventDialogInfoStr = "<?xml version='1.0' encoding='utf-16'?>" +
-                 "<dialog-info version='1' state='full' entity='sip:test@test.com' xmlns='urn:ietf:params:xml:ns:dialog-info'>" +
-                 " <dialog id='as7d900as8' call-id='a84b4c76e66710' local-tag='1928301774' direction='initiator'>" +
-                 "  <state event='remote-bye' code='486'>terminated</state>" +
-                 "  <duration>13</duration>" +
-                 "  <local>" +
-                 "   <identity>sip:109@sipsorcery.com;user=phone</identity>" +
-                 "   <cseq>2</cseq>" +
-                 "  </local>" +
-                 "  <remote>" +
-                 "   <identity display-name='Joe Bloggs'>sip:thisis@anonymous.invalid</identity>" +
-                 "   <target uri='sip:user@10.1.1.7:5070' />" +
-                 "   <cseq>1</cseq>" +
-                 "  </remote>" +
-                 " </dialog>" +
-                 "</dialog-info>";
+            string eventDialogInfoStr = $"<?xml version='1.0' encoding='utf-16'?><dialog-info version='1' state='full' entity='sip:test@test.com' xmlns='urn:ietf:params:xml:ns:dialog-info'> <dialog id='as7d900as8' call-id='a84b4c76e66710' local-tag='1928301774' direction='initiator'>  <state event='remote-bye' code='486'>terminated</state>  <duration>13</duration>  <local>   <identity>sip:109@sipsorcery.com;user=phone</identity>   <cseq>2</cseq>  </local>  <remote>   <identity display-name='Joe Bloggs'>sip:thisis@anonymous.invalid</identity>   <target uri='sip:user@10.1.1.7:5070' />   <cseq>1</cseq>  </remote> </dialog></dialog-info>";
 
             SIPEventDialogInfo dialogInfo = SIPEventDialogInfo.Parse(eventDialogInfoStr);
 
@@ -252,8 +221,7 @@ namespace SIPSorcery.SIP.UnitTests
             Assert.True(dialogInfo.DialogItems[0].RemoteParticipant.TargetURI == SIPURI.ParseSIPURI("sip:user@10.1.1.7:5070"), "The remote participant target URI was incorrect.");
             Assert.True(dialogInfo.DialogItems[0].RemoteParticipant.CSeq == 1, "The remote participant CSeq was incorrect.");
 
-            logger.LogDebug(dialogInfo.ToXMLText());
-
+            logger.LogDebug("{DialogInfo}", dialogInfo.ToXMLText());
             logger.LogDebug("-----------------------------------------");
         }
 
@@ -263,8 +231,8 @@ namespace SIPSorcery.SIP.UnitTests
         /*[Fact]
         public void ParseSDPFromXMLStringDialogUnitTest()
         {
-            logger.LogDebug("--> " + System.Reflection.MethodBase.GetCurrentMethod().Name);
-            logger.BeginScope(System.Reflection.MethodBase.GetCurrentMethod().Name);
+            logger.LogDebug("--> {MethodName}", TestHelper.GetCurrentMethodName());
+            logger.BeginScope(TestHelper.GetCurrentMethodName());
 
             string CRLF = "\r\n";
             string sdp =

@@ -1,4 +1,4 @@
-﻿//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
 // Filename: AudioSendPacerUnitTest.cs
 //
 // Description: Unit tests for the AudioSendPacer class.
@@ -43,8 +43,8 @@ public class AudioSendPacerUnitTest
         Task<long> secondSendTask = pacer.SendAsync(50, new byte[] { 0x02 });
 
         Assert.True(sentEvent.Wait(TimeSpan.FromSeconds(2)));
-        Assert.Equal(0, await firstSendTask.ConfigureAwait(false));
-        Assert.Equal(1, await secondSendTask.ConfigureAwait(false));
+        Assert.Equal(0, await firstSendTask);
+        Assert.Equal(1, await secondSendTask);
 
         lock (sentSamples)
         {
@@ -86,12 +86,12 @@ public class AudioSendPacerUnitTest
 
         long lowestRemovedIndex = pacer.ClearQueue();
 
-        Assert.Equal(0, await firstSendTask.ConfigureAwait(false));
+        Assert.Equal(0, await firstSendTask);
         Assert.Equal(1, lowestRemovedIndex);
         Assert.Equal(AudioSendPacer.NoQueuedAudioRemoved, pacer.ClearQueue());
 
-        await Assert.ThrowsAsync<TaskCanceledException>(() => secondSendTask).ConfigureAwait(false);
-        await Assert.ThrowsAsync<TaskCanceledException>(() => thirdSendTask).ConfigureAwait(false);
+        await Assert.ThrowsAsync<TaskCanceledException>(() => secondSendTask);
+        await Assert.ThrowsAsync<TaskCanceledException>(() => thirdSendTask);
 
         Thread.Sleep(300);
 
@@ -114,7 +114,7 @@ public class AudioSendPacerUnitTest
             senderArray = segment.Array;
         }, 1000);
 
-        long queueIndex = await pacer.SendAsync(20, mutableSample).ConfigureAwait(false);
+        long queueIndex = await pacer.SendAsync(20, mutableSample);
 
         Assert.Equal(0, queueIndex);
         Assert.Same(mutableSample, senderArray);
@@ -144,10 +144,10 @@ public class AudioSendPacerUnitTest
 
         cancellationTokenSource.Cancel();
 
-        TaskCanceledException excp = await Assert.ThrowsAsync<TaskCanceledException>(() => secondSendTask).ConfigureAwait(false);
+        TaskCanceledException excp = await Assert.ThrowsAsync<TaskCanceledException>(() => secondSendTask);
 
         Assert.Equal(cancellationTokenSource.Token, excp.CancellationToken);
-        Assert.Equal(0, await firstSendTask.ConfigureAwait(false));
+        Assert.Equal(0, await firstSendTask);
 
         Thread.Sleep(300);
 
@@ -171,9 +171,9 @@ public class AudioSendPacerUnitTest
         Assert.True(firstSentEvent.Wait(TimeSpan.FromSeconds(2)));
 
         long lowestRemovedIndex = pacer.ClearQueue(cancellationTokenSource.Token);
-        TaskCanceledException excp = await Assert.ThrowsAsync<TaskCanceledException>(() => secondSendTask).ConfigureAwait(false);
+        TaskCanceledException excp = await Assert.ThrowsAsync<TaskCanceledException>(() => secondSendTask);
 
-        Assert.Equal(0, await firstSendTask.ConfigureAwait(false));
+        Assert.Equal(0, await firstSendTask);
         Assert.Equal(1, lowestRemovedIndex);
         Assert.Equal(cancellationTokenSource.Token, excp.CancellationToken);
     }
@@ -192,9 +192,9 @@ public class AudioSendPacerUnitTest
 
         pacer.Dispose();
 
-        TaskCanceledException excp = await Assert.ThrowsAsync<TaskCanceledException>(() => secondSendTask).ConfigureAwait(false);
+        TaskCanceledException excp = await Assert.ThrowsAsync<TaskCanceledException>(() => secondSendTask);
 
-        Assert.Equal(0, await firstSendTask.ConfigureAwait(false));
+        Assert.Equal(0, await firstSendTask);
         Assert.True(disposedCancellationToken.IsCancellationRequested);
         Assert.Equal(disposedCancellationToken, excp.CancellationToken);
     }

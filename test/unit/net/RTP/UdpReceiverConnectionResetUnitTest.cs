@@ -68,6 +68,46 @@ namespace SIPSorcery.Net.UnitTests
             logger = SIPSorcery.UnitTests.TestLogHelper.InitTestLogger(output);
         }
 
+        [Fact]
+        public async Task ReceiveLoopSurvivesPacketHandlerException()
+        {
+            using var recvSocket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+            recvSocket.Bind(new IPEndPoint(IPAddress.Loopback, 0));
+            using var sender = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+            var receiver = new UdpReceiver(recvSocket);
+            var malformedPacketHandled = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var packetReceived = new TaskCompletionSource<byte[]>(TaskCreationOptions.RunContinuationsAsynchronously);
+            int packetsHandled = 0;
+            receiver.OnPacketReceived += (_, _, _, packet) =>
+            {
+                if (Interlocked.Increment(ref packetsHandled) == 1)
+                {
+                    malformedPacketHandled.TrySetResult(true);
+                    throw new FormatException("Malformed test packet.");
+                }
+                packetReceived.TrySetResult(packet.ToArray());
+            };
+
+            try
+            {
+                receiver.BeginReceiveFrom();
+                sender.SendTo(new byte[] { 0xFF }, recvSocket.LocalEndPoint);
+                Assert.Same(malformedPacketHandled.Task,
+                    await Task.WhenAny(malformedPacketHandled.Task, Task.Delay(2000)));
+
+                byte[] payload = { 0x01, 0x02, 0x03 };
+                sender.SendTo(payload, recvSocket.LocalEndPoint);
+                Assert.Same(packetReceived.Task,
+                    await Task.WhenAny(packetReceived.Task, Task.Delay(2000)));
+                Assert.Equal(payload, await packetReceived.Task);
+                Assert.False(receiver.IsClosed);
+            }
+            finally
+            {
+                receiver.Close("test complete");
+            }
+        }
+
         /// <summary>
         /// Verifies that after a ConnectionReset SocketException (ICMP port unreachable)
         /// occurs in EndReceiveFrom, the receive loop restarts and can still deliver
@@ -111,7 +151,7 @@ namespace SIPSorcery.Net.UnitTests
 
             var completed = await Task.WhenAny(packetReceived.Task, Task.Delay(2000));
             Assert.True(completed == packetReceived.Task,
-                "Receiver did not deliver a packet after ConnectionReset — the receive loop may have died.");
+                "Receiver did not deliver a packet after ConnectionReset â€” the receive loop may have died.");
             Assert.Equal(payload, await packetReceived.Task);
 
             receiver.Close("test complete");

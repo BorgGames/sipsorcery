@@ -51,7 +51,7 @@
     <!-- Disable warning for missing XML doc comments. -->
     <NoWarn>$(NoWarn);CS1591;CS1573;CS1587</NoWarn>
     <Authors>Aaron Clauson, Christophe Irles, Rafael Soares &amp; Contributors</Authors>
-    <Copyright>Copyright © 2010-2026 Aaron Clauson</Copyright>
+    <Copyright>Copyright Ã‚Â© 2010-2026 Aaron Clauson</Copyright>
     <PackageLicenseFile>LICENSE.md</PackageLicenseFile>
     <Title>SIPSorcery</Title>
     <Summary>A cross platform C# .NET library for SIP, VoIP and WebRTC.</Summary>
@@ -59,15 +59,15 @@
     </Description>
     <Company>SIP Sorcery PTY LTD</Company>
     <Product>SIPSorcery</Product>
-    <PackageId>SIPSorcery</PackageId>
+    <PackageId>Borg.SIPSorcery</PackageId>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
-    <PackageProjectUrl>https://github.com/sipsorcery-org/sipsorcery/tree/master/src/SIPSorcery</PackageProjectUrl>
+    <PackageProjectUrl>https://github.com/BorgGames/sipsorcery/tree/borg/master/src/SIPSorcery</PackageProjectUrl>
     <PackageIconUrl>http://www.sipsorcery.com/mainsite/favicon.ico</PackageIconUrl>
     <PackageIcon>icon.png</PackageIcon>
-    <RepositoryUrl>https://github.com/sipsorcery-org/sipsorcery</RepositoryUrl>
+    <RepositoryUrl>https://github.com/BorgGames/sipsorcery</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
-    <RepositoryBranch>master</RepositoryBranch>
+    <RepositoryBranch>borg/master</RepositoryBranch>
     <PolyArgumentExceptions>true</PolyArgumentExceptions>
     <PackageTags>SIP WebRTC VoIP RTP SDP STUN ICE SIPSorcery</PackageTags>
     <PackageReleaseNotes>-v10.0.18-pre: Bug fixes. New video Forward Error Correction (FEC) RFC2198 and RFC5109, new SIP Real-time Text (RTT) RFC4103 experimental features. 
@@ -105,7 +105,7 @@
 -v8.0.1-pre: Performance improvements (thanks to @weltmeyer). Add ECDSA as default option for WebRTC DTLS.
 -v8.0.0: RTP header extension improvements (thanks to @ChristopheI). Major version to 8 to reflect highest .net runtime supported.</PackageReleaseNotes>
     <NeutralLanguage>en</NeutralLanguage>
-    <Version>10.0.18-pre</Version>
+    <Version>10.0.18-PacketView-26.10.27.0</Version>
     <AssemblyVersion>10.0.18</AssemblyVersion>
     <FileVersion>10.0.18</FileVersion>
   </PropertyGroup>
@@ -116,6 +116,12 @@
          build instead of shipping. Runs on 'dotnet pack'. Deliberate, already-shipped
          breaks are listed in CompatibilitySuppressions.xml with a reason. -->
     <EnablePackageValidation>true</EnablePackageValidation>
+    <!-- Borg intentionally exposes span APIs that differ from upstream. Keep cross-framework
+         validation, without requiring binary compatibility with the upstream package. -->
+    <DisablePackageBaselineValidation>true</DisablePackageBaselineValidation>
+    <!-- Upstream baseline-only suppressions are retained for future upstream merges. -->
+    <ApiCompatPermitUnnecessarySuppressions>true</ApiCompatPermitUnnecessarySuppressions>
+    <PackageValidationBaselineName>SIPSorcery</PackageValidationBaselineName>
     <PackageValidationBaselineVersion>10.0.18-pre</PackageValidationBaselineVersion>
   </PropertyGroup>
 

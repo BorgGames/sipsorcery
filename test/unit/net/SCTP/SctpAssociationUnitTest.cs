@@ -1,4 +1,4 @@
-//-----------------------------------------------------------------------------
+﻿//-----------------------------------------------------------------------------
 // Filename: SctpAssociationUnitTest.cs
 //
 // Description: Unit tests for the SctpAssociation class.

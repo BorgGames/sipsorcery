@@ -1,4 +1,4 @@
-//-----------------------------------------------------------------------------
+﻿//-----------------------------------------------------------------------------
 // Filename: SctpErrorCauses.cs
 //
 // Description: Represents the SCTP error causes and the different representations

@@ -1,4 +1,4 @@
-//-----------------------------------------------------------------------------
+﻿//-----------------------------------------------------------------------------
 // Filename: SctpDataSender.cs
 //
 // Description: This class manages sending data chunks to an association's
@@ -142,7 +142,7 @@ namespace SIPSorcery.Net
         private Dictionary<ushort, ushort> _streamSeqnums = new Dictionary<ushort, ushort>();
 
         public int MaxSendQueueCount => 128;
-// TODO: Rewrite this queue to use BlockingQueue.
+        // TODO: Rewrite this queue to use BlockingQueue.
         /// <summary>
         /// Queue to hold SCTP frames that are waiting to be sent to the remote peer.
         /// </summary>
@@ -583,6 +583,7 @@ namespace SIPSorcery.Net
 
             while (!_closed.HasOccurred)
             {
+                // Reset before sending so a SACK arriving during send work cannot lose its wakeup.
                 _senderMre.Reset();
                 var outstandingBytes = (uint)_outstandingBytes;
                 var allowedWindow = Math.Min(_congestionWindow, _receiverWindow);

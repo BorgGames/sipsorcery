@@ -1,4 +1,4 @@
-//-----------------------------------------------------------------------------
+﻿//-----------------------------------------------------------------------------
 // Filename: RTCPSession.cs
 //
 // Description: Represents an RTCP session intended to be used in conjunction

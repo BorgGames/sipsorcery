@@ -127,14 +127,14 @@ namespace SIPSorcery.Net.UnitTests
 
             public TestImpairedRtpChannel() : base(false, IPAddress.Loopback) { }
 
-            public override System.Net.Sockets.SocketError Send(RTPChannelSocketsEnum sendOn, IPEndPoint dstEndPoint, byte[] buffer)
+            public override System.Net.Sockets.SocketError Send(RTPChannelSocketsEnum sendOn, IPEndPoint dstEndPoint, ReadOnlySpan<byte> buffer, Func<Exception, bool> onFailure = null)
             {
-                if (DropPredicate != null && DropPredicate(buffer))
+                if (DropPredicate != null && DropPredicate(buffer.ToArray()))
                 {
                     DroppedCount++;
                     return System.Net.Sockets.SocketError.Success;
                 }
-                return base.Send(sendOn, dstEndPoint, buffer);
+                return base.Send(sendOn, dstEndPoint, buffer, onFailure);
             }
         }
     }

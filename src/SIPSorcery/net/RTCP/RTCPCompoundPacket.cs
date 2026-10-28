@@ -1,4 +1,4 @@
-//-----------------------------------------------------------------------------
+﻿//-----------------------------------------------------------------------------
 // Filename: RTCPCompoundPacket.cs
 //
 // Description: Represents an RTCP compound packet consisting of 1 or more

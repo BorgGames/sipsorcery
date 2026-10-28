@@ -1,4 +1,4 @@
-//-----------------------------------------------------------------------------
+﻿//-----------------------------------------------------------------------------
 // Filename: IRTCDataChannel.cs
 //
 // Description: Contains the interface definition for the RTCDataChannel

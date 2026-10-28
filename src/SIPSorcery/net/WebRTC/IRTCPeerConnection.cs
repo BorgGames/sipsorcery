@@ -1,4 +1,4 @@
-//-----------------------------------------------------------------------------
+﻿//-----------------------------------------------------------------------------
 // Filename: IRTCPeerConnection.cs
 //
 // Description: Contains the interface definition for the RTCPeerConnection

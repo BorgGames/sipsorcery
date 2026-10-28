@@ -1,4 +1,4 @@
-//-----------------------------------------------------------------------------
+﻿//-----------------------------------------------------------------------------
 // Filename: SctpUdpTransport.cs
 //
 // Description: Represents an UDP transport capable of encapsulating SCTP

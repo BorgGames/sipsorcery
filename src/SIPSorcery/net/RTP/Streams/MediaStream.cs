@@ -764,6 +764,7 @@ namespace SIPSorcery.Net
         private void SendFinalizedRtpPacket(RTPPacket rtpPacket, ProtectRtpPacket protectRtpPacket, int srtpProtectionLength)
         {
             var rtpBuffer = rtpPacket.GetBytes();
+            int sendLength = rtpBuffer.Length;
 
             if (protectRtpPacket != null)
             {
@@ -780,7 +781,7 @@ namespace SIPSorcery.Net
                 }
                 else
                 {
-                    rtpBuffer = rtpBuffer.AsSpan(0, outBufLen).ToArray();
+                    sendLength = outBufLen;
                 }
             }
 
@@ -788,11 +789,11 @@ namespace SIPSorcery.Net
             {
                 if (IsUsingRelayEndPoint)
                 {
-                    rtpChannel.SendRelay(RTPChannelSocketsEnum.RTP, DestinationEndPoint, rtpBuffer, RtpRelayEndPoint.RelayServerEndPoint);
+                    rtpChannel.SendRelay(RTPChannelSocketsEnum.RTP, DestinationEndPoint, sendLength == rtpBuffer.Length ? rtpBuffer : rtpBuffer.AsSpan(0, sendLength).ToArray(), RtpRelayEndPoint.RelayServerEndPoint);
                 }
                 else
                 {
-                    rtpChannel.Send(RTPChannelSocketsEnum.RTP, DestinationEndPoint, rtpBuffer);
+                    rtpChannel.Send(RTPChannelSocketsEnum.RTP, DestinationEndPoint, rtpBuffer.AsSpan(0, sendLength));
                 }
 
                 RtcpSession?.RecordRtpPacketSend(rtpPacket);
@@ -1004,7 +1005,7 @@ namespace SIPSorcery.Net
                         //logger.LogDebug("Sending key {MediaType} RTCP packet size {Size} to {EndPoint}.",
                         //    MediaType, outBufLen, ControlDestinationEndPoint);
 
-                        rtpChannel.Send(sendOnSocket, ControlDestinationEndPoint, sendBuffer.AsSpan(0, outBufLen).ToArray());
+                        rtpChannel.Send(sendOnSocket, ControlDestinationEndPoint, sendBuffer.AsSpan(0, outBufLen));
                     }
                 }
             }

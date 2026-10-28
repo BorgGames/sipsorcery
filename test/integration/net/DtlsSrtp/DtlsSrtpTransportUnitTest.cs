@@ -1,4 +1,4 @@
-//-----------------------------------------------------------------------------
+﻿//-----------------------------------------------------------------------------
 // Filename: DtlsSrtpTransportUnitTest.cs
 //
 // Description: Unit tests for the DtlsSrtpTransport class.

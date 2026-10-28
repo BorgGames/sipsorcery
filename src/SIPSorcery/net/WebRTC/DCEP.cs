@@ -1,4 +1,4 @@
-//-----------------------------------------------------------------------------
+﻿//-----------------------------------------------------------------------------
 // Filename: DCEP.cs
 //
 // Description: Contains functions for working with the WebRTC Data
@@ -167,12 +167,12 @@ namespace SIPSorcery.Net
 
             if (labelLength > 0)
             {
-            dcepOpen.Label = buffer.Slice(labelPosn, labelLength).ToString(Encoding.UTF8);
+                dcepOpen.Label = buffer.Slice(labelPosn, labelLength).ToString(Encoding.UTF8);
             }
 
             if (protocolLength > 0)
             {
-            dcepOpen.Protocol = buffer.Slice(labelPosn + labelLength, protocolLength).ToString(Encoding.UTF8);
+                dcepOpen.Protocol = buffer.Slice(labelPosn + labelLength, protocolLength).ToString(Encoding.UTF8);
             }
 
             return dcepOpen;

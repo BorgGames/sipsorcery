@@ -1,4 +1,4 @@
-//-----------------------------------------------------------------------------
+﻿//-----------------------------------------------------------------------------
 // Filename: RtpIceChannel.cs
 //
 // Description: Represents an RTP channel with ICE connectivity checks as 
@@ -2079,10 +2079,7 @@ namespace SIPSorcery.Net
                             entry.TurnPermissionsResponseAt = DateTime.Now;
                         }
 
-                        lock (_checklist)
-                        {
-                            AddChecklistEntry(entry);
-                        }
+                        AddChecklistEntry(entry);
 
                         matchingChecklistEntry = entry;
                     }

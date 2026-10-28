@@ -1,4 +1,4 @@
-//-----------------------------------------------------------------------------
+﻿//-----------------------------------------------------------------------------
 // Filename: RTPChannel.cs
 //
 // Description: Communications channel to send and receive RTP and RTCP packets

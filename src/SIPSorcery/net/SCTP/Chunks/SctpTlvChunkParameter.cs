@@ -1,4 +1,4 @@
-//-----------------------------------------------------------------------------
+﻿//-----------------------------------------------------------------------------
 // Filename: SctpTlvChunkParameter.cs
 //
 // Description: Represents the a Type-Length-Value (TLV) chunk parameter. These

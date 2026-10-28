@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <!-- Runnable frameworks only — see the note in test/unit/SIPSorcery.UnitTests.csproj. -->

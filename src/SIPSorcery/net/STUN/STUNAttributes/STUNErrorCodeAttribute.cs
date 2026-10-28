@@ -1,4 +1,4 @@
-//-----------------------------------------------------------------------------
+﻿//-----------------------------------------------------------------------------
 // Filename: STUNErrorCodeAttribute.cs
 //
 // Description: Implements STUN error attribute as defined in RFC5389.

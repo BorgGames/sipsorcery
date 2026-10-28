@@ -1,4 +1,4 @@
-//-----------------------------------------------------------------------------
+﻿//-----------------------------------------------------------------------------
 // Filename: UdpReceiverConnectionResetUnitTest.cs
 //
 // Description: Unit tests verifying that a ConnectionReset (ICMP port

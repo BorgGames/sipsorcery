@@ -1,4 +1,4 @@
-//-----------------------------------------------------------------------------
+﻿//-----------------------------------------------------------------------------
 // Filename: SctpDataReceiver.cs
 //
 // Description: This class is used to collate incoming DATA chunks into full

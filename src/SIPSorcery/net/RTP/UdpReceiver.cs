@@ -171,7 +171,7 @@ public class UdpReceiver
         catch (SocketException sockExcp)
         {
             m_isRunningReceive = false;
-            logger.LogWarning($"Socket error {sockExcp.SocketErrorCode} in UdpReceiver.BeginReceiveFrom. {sockExcp.Message}");
+            logger.LogWarning("Socket error {SocketErrorCode} in UdpReceiver.BeginReceiveFrom. {Message}", sockExcp.SocketErrorCode, sockExcp.Message);
             //Close(sockExcp.Message);
         }
         catch (Exception excp)
@@ -283,7 +283,7 @@ public class UdpReceiver
             // in the BeginReceive method (very handy). Follow-up, this doesn't seem to be the case, the socket exception can occur in 
             // BeginReceive before any packets have been exchanged. This means it's not safe to close if BeginReceive gets an ICMP 
             // error since the remote party may not have initialised their socket yet.
-            logger.LogWarning(sockExcp, $"SocketException UdpReceiver.EndReceiveFrom ({sockExcp.SocketErrorCode}). {sockExcp.Message}");
+            logger.LogWarning("SocketException UdpReceiver.EndReceiveFrom ({SocketErrorCode}). {ErrorMessage}", sockExcp.SocketErrorCode, sockExcp.Message);
             break;
         case ObjectDisposedException: // Thrown when socket is closed. Can be safely ignored.
             break;
@@ -315,7 +315,6 @@ public class UdpReceiver
 
             if (bytesRead < 256 * 1024)
             {
-                Span<byte> packetBuffer = stackalloc byte[bytesRead];
                 CallOnPacketReceivedCallback(m_localEndPoint.Port, remoteEP as IPEndPoint, m_recvBuffer.AsSpan().Slice(0, bytesRead));
             }
             else

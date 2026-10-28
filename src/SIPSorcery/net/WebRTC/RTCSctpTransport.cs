@@ -1,4 +1,4 @@
-//-----------------------------------------------------------------------------
+﻿//-----------------------------------------------------------------------------
 // Filename: RTCSctpTransport.cs
 //
 // Description: Represents a DTLS based transport for sending and receiving
@@ -211,7 +211,6 @@ namespace SIPSorcery.Net
                     _isClosed.TryMarkOccurred();
                 }
             }
-            _isClosed.TryMarkOccurred();
         }
 
         /// <summary>
@@ -360,7 +359,7 @@ namespace SIPSorcery.Net
                     // Treat application exceptions as recoverable, things like SCTP packet parse failures.
                     logger.LogWarning("SCTP error processing RTCSctpTransport receive. {Message}", appExcp.Message);
                 }
-                catch (Exception parseExcp) when (parseExcp is IndexOutOfRangeException || parseExcp is ArgumentException)
+                catch (Exception parseExcp) when (parseExcp is IndexOutOfRangeException or ArgumentException or FormatException)
                 {
                     // Defence in depth for the same class of failure. Malformed input reaching a parser that
                     // indexes the receive buffer without its own length check surfaces as one of these rather
@@ -409,6 +408,10 @@ namespace SIPSorcery.Net
             {
                 lock (_lock)
                 {
+                    if (_isClosed.HasOccurred)
+                    {
+                        return;
+                    }
 #if NET6_0_OR_GREATER
                     transport.Send(data);
 #else

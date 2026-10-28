@@ -1,4 +1,4 @@
-//-----------------------------------------------------------------------------
+﻿//-----------------------------------------------------------------------------
 // Filename: SctpSackChunk.cs
 //
 // Description: Represents the SCTP Selective Acknowledgement (SACK) chunk.

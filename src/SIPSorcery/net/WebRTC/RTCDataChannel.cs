@@ -1,4 +1,4 @@
-//-----------------------------------------------------------------------------
+﻿//-----------------------------------------------------------------------------
 // Filename: RTCDataChannel.cs
 //
 // Description: Contains an implementation for a WebRTC data channel.

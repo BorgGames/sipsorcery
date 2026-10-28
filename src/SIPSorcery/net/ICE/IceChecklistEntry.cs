@@ -1,4 +1,4 @@
-//-----------------------------------------------------------------------------
+﻿//-----------------------------------------------------------------------------
 // Filename: IceChecklistEntry.cs
 //
 // Description: Represents an entry that gets added to an ICE session checklist.

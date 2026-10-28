@@ -1,4 +1,4 @@
-//-----------------------------------------------------------------------------
+﻿//-----------------------------------------------------------------------------
 // Filename: SctpDataSendRecvUnitTest.cs
 //
 // Description: Unit tests to check the SctpDataSender and SctpDataReceiver

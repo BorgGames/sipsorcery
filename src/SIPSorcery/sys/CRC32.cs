@@ -1,4 +1,4 @@
-// from http://damieng.com/blog/2006/08/08/Calculating_CRC32_in_C_and_NET
+﻿// from http://damieng.com/blog/2006/08/08/Calculating_CRC32_in_C_and_NET
 
 using System;
 using System.Security.Cryptography;

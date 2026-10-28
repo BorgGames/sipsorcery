@@ -1,4 +1,4 @@
-//-----------------------------------------------------------------------------
+﻿//-----------------------------------------------------------------------------
 // Filename: MockTurnServer.cs
 //
 // Description: Serves a mock STUN/TURN server for RtpIceChannel unit tests.

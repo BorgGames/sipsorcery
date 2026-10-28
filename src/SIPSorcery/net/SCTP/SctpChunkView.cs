@@ -91,6 +91,7 @@ public readonly ref struct SctpChunkView
 
     public ref struct ErrorCodeEnumerator(ReadOnlySpan<byte> paramsBuffer)
     {
+        private const int ErrorCauseAlignment = 4;
         readonly ReadOnlySpan<byte> originalParamsBuffer = paramsBuffer;
         ReadOnlySpan<byte> paramsBuffer;
         bool started;
@@ -106,18 +107,34 @@ public readonly ref struct SctpChunkView
 
         public bool MoveNext()
         {
-            if (started)
+            if (started && !paramsBuffer.IsEmpty)
             {
-                int length = SctpTlvChunkParameter.ParseFirstWord(paramsBuffer, out var type);
-                paramsBuffer = paramsBuffer.Slice(length);
+                int length = SctpTlvChunkParameter.ParseFirstWord(paramsBuffer, out _);
+                int padding = (ErrorCauseAlignment - length % ErrorCauseAlignment) % ErrorCauseAlignment;
+                paramsBuffer = paramsBuffer.Slice(Math.Min(length + padding, paramsBuffer.Length));
             }
-            else
+            else if (!started)
             {
                 started = true;
                 paramsBuffer = originalParamsBuffer;
             }
-            return !paramsBuffer.IsEmpty;
+
+            if (paramsBuffer.IsEmpty)
+            {
+                return false;
+            }
+            if (paramsBuffer.Length < SctpTlvChunkParameter.SCTP_PARAMETER_HEADER_LENGTH)
+            {
+                throw new FormatException("SCTP error cause header is truncated.");
+            }
+            int causeLength = BinaryPrimitives.ReadUInt16BigEndian(paramsBuffer.Slice(sizeof(ushort), sizeof(ushort)));
+            if (causeLength < SctpTlvChunkParameter.SCTP_PARAMETER_HEADER_LENGTH || causeLength > paramsBuffer.Length)
+            {
+                throw new FormatException("SCTP error cause length is invalid.");
+            }
+            return true;
         }
+
         public void Dispose() { }
 
         public void Reset()
@@ -128,7 +145,7 @@ public readonly ref struct SctpChunkView
 
     public SctpChunkView(ReadOnlySpan<byte> buffer)
     {
-        if (buffer.Length < 4)
+        if (buffer.Length < SctpChunk.SCTP_CHUNK_HEADER_LENGTH)
         {
             throw new ArgumentException("Buffer too short to be a valid SCTP chunk.");
         }
@@ -140,8 +157,7 @@ public readonly ref struct SctpChunkView
 
         _ = Type switch
         {
-            ABORT => ValidateError(isAbort: true),
-            ERROR => ValidateError(isAbort: false),
+            ABORT or ERROR => ValidateError(),
             DATA => ValidateData(),
             SACK => ValidateSack(),
             COOKIE_ACK or COOKIE_ECHO
@@ -165,24 +181,34 @@ public readonly ref struct SctpChunkView
     bool ValidateInit()
     {
         ValidateBase();
+        if (Length < SctpChunk.SCTP_CHUNK_HEADER_LENGTH + SctpInitChunk.FIXED_PARAMETERS_LENGTH)
+        {
+            throw new FormatException("SCTP INIT chunk is too short for fixed parameter fields.");
+        }
         return true;
     }
 
     bool ValidateSack()
     {
+        ValidateBase();
+        int minimumLength = SctpChunk.SCTP_CHUNK_HEADER_LENGTH + SctpSackChunk.FIXED_PARAMETERS_LENGTH;
+        if (Length < minimumLength)
+        {
+            throw new FormatException("SCTP SACK chunk is too short for fixed parameter fields.");
+        }
         int gapAckSize = NumGapAckBlocks * SctpSackChunk.GAP_REPORT_LENGTH;
         int dupTsnSize = NumDuplicateTSNs * SctpSackChunk.DUPLICATE_TSN_LENGTH;
-        int expectedLength = SctpSackChunk.FIXED_PARAMETERS_LENGTH + gapAckSize + dupTsnSize;
+        int expectedLength = minimumLength + gapAckSize + dupTsnSize;
         if (Length < expectedLength)
         {
-            throw new ApplicationException($"SCTP SACK chunk length {Length} does not match expected length {expectedLength}.");
+            throw new FormatException($"SCTP SACK chunk length {Length} does not match expected length {expectedLength}.");
         }
         return true;
     }
 
     bool ValidateBase()
     {
-        if (Length > buffer.Length)
+        if (Length < SctpChunk.SCTP_CHUNK_HEADER_LENGTH || Length > buffer.Length)
         {
             throw new ArgumentException("Buffer too short to be a valid SCTP chunk.");
         }
@@ -192,17 +218,22 @@ public readonly ref struct SctpChunkView
     bool ValidateData()
     {
         ValidateBase();
-        if (Length < SctpDataChunk.FIXED_PARAMETERS_LENGTH)
+        if (Length < SctpChunk.SCTP_CHUNK_HEADER_LENGTH + SctpDataChunk.FIXED_PARAMETERS_LENGTH)
         {
-            throw new ApplicationException($"SCTP data chunk cannot be parsed as buffer too short for fixed parameter fields.");
+            throw new FormatException($"SCTP data chunk cannot be parsed as buffer too short for fixed parameter fields.");
         }
         return true;
     }
 
-    bool ValidateError(bool isAbort)
+    bool ValidateError()
     {
         ValidateBase();
-        SctpErrorChunk.ParseChunk(buffer, 0, isAbort: isAbort);
+        // Validate every cause before the association can process or log any of them.
+        foreach (var errorCode in GetErrorCodes())
+        {
+            _ = errorCode;
+        }
+        SctpErrorChunk.ParseChunk(buffer, 0, isAbort: Type == ABORT);
         return true;
     }
 

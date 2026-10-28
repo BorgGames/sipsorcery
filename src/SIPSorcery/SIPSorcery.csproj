@@ -51,7 +51,7 @@
     <!-- Disable warning for missing XML doc comments. -->
     <NoWarn>$(NoWarn);CS1591;CS1573;CS1587</NoWarn>
     <Authors>Aaron Clauson, Christophe Irles, Rafael Soares &amp; Contributors</Authors>
-    <Copyright>Copyright Ã‚Â© 2010-2026 Aaron Clauson</Copyright>
+    <Copyright>Copyright © 2010-2026 Aaron Clauson</Copyright>
     <PackageLicenseFile>LICENSE.md</PackageLicenseFile>
     <Title>SIPSorcery</Title>
     <Summary>A cross platform C# .NET library for SIP, VoIP and WebRTC.</Summary>
@@ -60,6 +60,7 @@
     <Company>SIP Sorcery PTY LTD</Company>
     <Product>SIPSorcery</Product>
     <PackageId>Borg.SIPSorcery</PackageId>
+    <AssemblyName>Borg.SIPSorcery</AssemblyName>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <PackageProjectUrl>https://github.com/BorgGames/sipsorcery/tree/borg/master/src/SIPSorcery</PackageProjectUrl>

@@ -60,7 +60,10 @@ jobs:
             --framework netstandard2.0 \
             --output staging
           unity_provided=(
-            Microsoft.CSharp.dll
+            System.Buffers.dll
+            System.Memory.dll
+            System.Numerics.Vectors.dll
+            System.Threading.Tasks.Extensions.dll
           )
           for dll in staging/*.dll; do
             name=$(basename "$dll")

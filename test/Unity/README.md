@@ -45,7 +45,7 @@ test/Unity/SipSorceryUnitySmokeTest/
 1. `dotnet publish` builds `src/SIPSorcery/SIPSorcery.csproj` for
    `netstandard2.0` and copies the DLLs into `Assets/Plugins/`. A small
    block-list filters out assemblies Unity already provides as built-in
-   references (e.g. `Microsoft.CSharp.dll` — leaving it causes CS1703).
+   references (e.g. `System.Memory.dll`, which would conflict with Unity's own).
 2. An inline shell step generates a `.dll.meta` file for every staged
    plugin. The `.meta` sets `validateReferences: 0` and enables the
    plugin on the Editor platform. Without this, Unity's plugin importer
@@ -68,7 +68,7 @@ test/Unity/SipSorceryUnitySmokeTest/
    dotnet publish src/SIPSorcery/SIPSorcery.csproj \
      -c Release -f netstandard2.0 \
      -o test/Unity/SipSorceryUnitySmokeTest/Assets/Plugins
-   rm test/Unity/SipSorceryUnitySmokeTest/Assets/Plugins/Microsoft.CSharp.dll
+   rm test/Unity/SipSorceryUnitySmokeTest/Assets/Plugins/{System.Buffers,System.Memory,System.Numerics.Vectors,System.Threading.Tasks.Extensions}.dll
    ```
 3. Open `test/Unity/SipSorceryUnitySmokeTest` in Unity Hub. The
    `Assets/Editor/PluginImportSettings.cs` script will fix any

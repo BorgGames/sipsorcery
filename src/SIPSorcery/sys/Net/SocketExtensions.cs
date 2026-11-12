@@ -1,4 +1,4 @@
-// Adapted from lostmsu's fix for #1494.
+﻿// Adapted from lostmsu's fix for #1494.
 // See https://github.com/sipsorcery-org/sipsorcery/issues/1494
 
 using System;

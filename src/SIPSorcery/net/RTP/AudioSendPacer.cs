@@ -1,4 +1,4 @@
-//-----------------------------------------------------------------------------
+﻿//-----------------------------------------------------------------------------
 // Filename: AudioSendPacer.cs
 //
 // Description: Utility class for pacing queued audio samples to a send

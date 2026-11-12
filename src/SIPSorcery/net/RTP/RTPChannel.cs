@@ -20,6 +20,8 @@
 using System;
 using System.Linq;
 using System.Buffers;
+using System.Diagnostics;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Net;
 using System.Net.Sockets;
@@ -43,12 +45,15 @@ public class RTPChannel : IDisposable
 {
     protected static readonly bool isMono = Type.GetType("Mono.Runtime") != null;
     private static readonly ILogger logger = LogFactory.CreateLogger<RTPChannel>();
+    private static readonly TimeSpan SendErrorLogInterval = TimeSpan.FromSeconds(5);
     protected UdpReceiver m_rtpReceiver;
     private Socket m_controlSocket;
     protected UdpReceiver m_controlReceiver;
     private bool m_rtpReceiverStarted = false;
     private bool m_controlReceiverStarted = false;
     private bool m_isClosed;
+    private long m_nextSendErrorLogTimestamp;
+    private int m_sendErrorsNotLogged;
 
     public Socket RtpSocket { get; private set; }
 
@@ -365,6 +370,7 @@ public class RTPChannel : IDisposable
             }
             catch (SocketException sockExcp)
             {
+                LogSendError(sockExcp, sendOn, dstEndPoint);
                 return sockExcp.SocketErrorCode;
             }
             catch (Exception excp)
@@ -373,6 +379,21 @@ public class RTPChannel : IDisposable
                 return SocketError.Fault;
             }
         }
+    }
+
+    private void LogSendError(SocketException sockExcp, RTPChannelSocketsEnum sendOn, IPEndPoint dstEndPoint)
+    {
+        long now = Stopwatch.GetTimestamp();
+        long nextLog = Interlocked.Read(ref m_nextSendErrorLogTimestamp);
+        long nextLogAfterThis = now + (long)(SendErrorLogInterval.TotalSeconds * Stopwatch.Frequency);
+        if (now < nextLog || Interlocked.CompareExchange(ref m_nextSendErrorLogTimestamp, nextLogAfterThis, nextLog) != nextLog)
+        {
+            Interlocked.Increment(ref m_sendErrorsNotLogged);
+            return;
+        }
+
+        logger.LogWarning(sockExcp, "SocketException RTPChannel.Send ({SocketErrorCode}) on {SendOn} socket to {DestinationEndPoint}, {NotLogged} not logged since the previous one. {Message}",
+            sockExcp.SocketErrorCode, sendOn, dstEndPoint, Interlocked.Exchange(ref m_sendErrorsNotLogged, 0), sockExcp.Message);
     }
 
     private void OnSendFailure(Exception exception, IPEndPoint? endPoint = null, Socket? socket = null, Func<Exception, bool>? onFailure = null)

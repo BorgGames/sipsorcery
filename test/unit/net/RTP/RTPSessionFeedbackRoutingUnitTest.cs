@@ -9,6 +9,8 @@ namespace SIPSorcery.Net.UnitTests;
 
 public class RTPSessionFeedbackRoutingUnitTest
 {
+    private delegate void ReceivePacket(int localPort, IPEndPoint remoteEndPoint, ReadOnlySpan<byte> buffer);
+
     private const int RembPayloadLength = 20;
     [Theory]
     [InlineData(false, false)]
@@ -33,14 +35,13 @@ public class RTPSessionFeedbackRoutingUnitTest
             receivedMedia = media;
         };
 
-        var receiveRtcp = typeof(RTPSession).GetMethod("OnReceiveRTCPPacket", BindingFlags.Instance | BindingFlags.NonPublic);
-        Assert.NotNull(receiveRtcp);
+        var receiveRtcp = Receiver(session, "OnReceiveRTCPPacket");
         byte[] bytes = feedback.GetBytes();
         if (appendRemb)
         {
             bytes = bytes.Concat(CreateRemb(feedback.SenderSSRC, feedback.MediaSSRC).GetBytes()).ToArray();
         }
-        receiveRtcp.Invoke(session, new object[] { 0, new IPEndPoint(IPAddress.Loopback, 5005), bytes });
+        receiveRtcp(0, new IPEndPoint(IPAddress.Loopback, 5005), bytes);
 
         Assert.Equal(SDPMediaTypesEnum.video, receivedMedia);
     }
@@ -94,14 +95,13 @@ public class RTPSessionFeedbackRoutingUnitTest
             received = packet;
         };
 
-        var receiveRtcp = typeof(RTPSession).GetMethod("OnReceiveRTCPPacket", BindingFlags.Instance | BindingFlags.NonPublic);
-        Assert.NotNull(receiveRtcp);
+        var receiveRtcp = Receiver(session, "OnReceiveRTCPPacket");
         byte[] bytes = fir.GetBytes();
         if (appendRemb)
         {
             bytes = bytes.Concat(CreateRemb(fir.SenderSSRC, session.VideoLocalTrack.Ssrc).GetBytes()).ToArray();
         }
-        receiveRtcp.Invoke(session, new object[] { 0, new IPEndPoint(IPAddress.Loopback, 5005), bytes });
+        receiveRtcp(0, new IPEndPoint(IPAddress.Loopback, 5005), bytes);
 
         Assert.Equal(SDPMediaTypesEnum.video, receivedMedia);
         var receivedFir = Assert.Single(received.FeedbackMessages, x => x.Header.PayloadFeedbackMessageType == PSFBFeedbackTypesEnum.FIR);
@@ -207,11 +207,10 @@ public class RTPSessionFeedbackRoutingUnitTest
     }
 
     private static void InvokeOnReceive(RTPSession session, byte[] buffer)
-    {
-        var onReceive = typeof(RTPSession).GetMethod("OnReceiveOwnedBuffer", BindingFlags.Instance | BindingFlags.NonPublic);
-        Assert.NotNull(onReceive);
-        onReceive.Invoke(session, new object[] { 0, new IPEndPoint(IPAddress.Loopback, 5005), buffer });
-    }
+        => Receiver(session, "OnReceive")(0, new IPEndPoint(IPAddress.Loopback, 5005), buffer);
+
+    private static ReceivePacket Receiver(RTPSession session, string methodName)
+        => (ReceivePacket)typeof(RTPSession).GetMethod(methodName, BindingFlags.Instance | BindingFlags.NonPublic).CreateDelegate(typeof(ReceivePacket), session);
 
     private static RTCPFeedback CreateRemb(uint receiverSsrc, uint videoSsrc) =>
         new RTCPFeedback(receiverSsrc, 0, PSFBFeedbackTypesEnum.AFB)

@@ -15,6 +15,7 @@
 //-----------------------------------------------------------------------------
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -543,40 +544,44 @@ namespace SIPSorcery.Net
             return SecureContext != null;
         }
 
-        private (bool, byte[]) UnprotectBuffer(byte[] buffer)
+        private bool UnprotectBuffer(ReadOnlySpan<byte> buffer, out RTPPacket packet)
         {
+            packet = null;
             if (SecureContext != null)
             {
                 var unprotectRtpPacket = SecureContext.UnprotectRtpPacket;
-
-                int res = 0;
-                int outBufLen = 0;
-
-                res = unprotectRtpPacket(buffer, buffer.Length, out outBufLen);
-
-                if (res == 0)
+                byte[] unprotected = ArrayPool<byte>.Shared.Rent(buffer.Length);
+                try
                 {
-                    return (true, buffer.AsSpan(0, outBufLen).ToArray());
+                    buffer.CopyTo(unprotected);
+                    int res = unprotectRtpPacket(unprotected, buffer.Length, out int outBufLen);
+
+                    if (res == 0)
+                    {
+                        packet = new RTPPacket(unprotected.AsSpan(0, outBufLen));
+                        return true;
+                    }
+                    else
+                    {
+                        logger.LogWarning("SRTP unprotect failed for {MediaType}, result {Result}.", MediaType, res);
+                    }
                 }
-                else
+                finally
                 {
-                    logger.LogWarning("SRTP unprotect failed for {MediaType}, result {Result}.", MediaType, res);
+                    ArrayPool<byte>.Shared.Return(unprotected);
                 }
             }
-            return (false, buffer);
+            return false;
         }
 
-        public bool EnsureBufferUnprotected(byte[] buf, RTPHeader header, out RTPPacket packet)
+        public bool EnsureBufferUnprotected(ReadOnlySpan<byte> buf, RTPHeader header, out RTPPacket packet)
         {
             if (RtpSessionConfig.IsSecure || RtpSessionConfig.UseSdpCryptoNegotiation)
             {
-                var (succeeded, newBuffer) = UnprotectBuffer(buf);
-                if (!succeeded)
+                if (!UnprotectBuffer(buf, out packet))
                 {
-                    packet = null;
                     return false;
                 }
-                packet = new RTPPacket(newBuffer);
             }
             else
             {
@@ -1284,7 +1289,7 @@ namespace SIPSorcery.Net
             SendRtcpReport(reportBytes);
         }
 
-        public void OnReceiveRTPPacket(RTPHeader hdr, int localPort, IPEndPoint remoteEndPoint, byte[] buffer)
+        public void OnReceiveRTPPacket(RTPHeader hdr, int localPort, IPEndPoint remoteEndPoint, ReadOnlySpan<byte> buffer)
         {
             RTPPacket rtpPacket;
             if (MediaType == SDPMediaTypesEnum.audio && NegotiatedRtpEventPayloadID != 0 && hdr.PayloadType == NegotiatedRtpEventPayloadID)
@@ -1293,7 +1298,7 @@ namespace SIPSorcery.Net
                 {
                     // Cache pending packages to use it later to prevent missing frames
                     // when DTLS was not completed yet as a Server bt already completed as a client
-                    AddPendingPackage(hdr, localPort, remoteEndPoint, buffer);
+                    AddPendingPackage(hdr, localPort, remoteEndPoint, buffer.ToArray());
                     return;
                 }
 

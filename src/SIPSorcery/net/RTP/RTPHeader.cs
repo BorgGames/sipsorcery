@@ -74,7 +74,7 @@ public class RTPHeader
     /// Extract and load the RTP header from an RTP packet.
     /// </summary>
     /// <param name="packet"></param>
-    public RTPHeader(byte[] packet)
+    public RTPHeader(ReadOnlySpan<byte> packet)
     {
         if (packet.Length < MIN_HEADER_LEN)
         {
@@ -82,9 +82,9 @@ public class RTPHeader
         }
 
         UInt16 firstWord = BinaryPrimitives.ReadUInt16BigEndian(packet);
-        SequenceNumber = BinaryPrimitives.ReadUInt16BigEndian(packet.AsSpan(2));
-        Timestamp = BinaryPrimitives.ReadUInt32BigEndian(packet.AsSpan(4));
-        SyncSource = BinaryPrimitives.ReadUInt32BigEndian(packet.AsSpan(8));
+        SequenceNumber = BinaryPrimitives.ReadUInt16BigEndian(packet.Slice(2));
+        Timestamp = BinaryPrimitives.ReadUInt32BigEndian(packet.Slice(4));
+        SyncSource = BinaryPrimitives.ReadUInt32BigEndian(packet.Slice(8));
 
 
         Version = firstWord >> 14;
@@ -100,15 +100,15 @@ public class RTPHeader
 
         if (HeaderExtensionFlag == 1 && (packet.Length >= (headerAndCSRCLength + 4)))
         {
-            ExtensionProfile = BinaryPrimitives.ReadUInt16BigEndian(packet.AsSpan(12 + 4 * CSRCCount));
+            ExtensionProfile = BinaryPrimitives.ReadUInt16BigEndian(packet.Slice(12 + 4 * CSRCCount));
             headerExtensionLength += 2;
-            ExtensionLength = BinaryPrimitives.ReadUInt16BigEndian(packet.AsSpan(14 + 4 * CSRCCount));
+            ExtensionLength = BinaryPrimitives.ReadUInt16BigEndian(packet.Slice(14 + 4 * CSRCCount));
             headerExtensionLength += 2 + ExtensionLength * 4;
 
             if (ExtensionLength > 0 && packet.Length >= (headerAndCSRCLength + 4 + ExtensionLength * 4))
             {
                 ExtensionPayload = new byte[ExtensionLength * 4];
-                Buffer.BlockCopy(packet, headerAndCSRCLength + 4, ExtensionPayload, 0, ExtensionLength * 4);
+                packet.Slice(headerAndCSRCLength + 4, ExtensionPayload.Length).CopyTo(ExtensionPayload);
             }
         }
 

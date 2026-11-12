@@ -39,6 +39,8 @@ public class RTPSessionNackRetransmissionUnitTest
     private static readonly TimeSpan SenderReportAge = TimeSpan.FromMilliseconds(300);
     private static readonly TimeSpan TruncationTolerance = TimeSpan.FromMilliseconds(1);
 
+    private delegate void ReceivePacket(int localPort, IPEndPoint remoteEndPoint, ReadOnlySpan<byte> buffer);
+
     private sealed class Sender : IDisposable
     {
         public RTPSession Session;
@@ -55,8 +57,8 @@ public class RTPSessionNackRetransmissionUnitTest
 
         public void ReceiveRtcp(byte[] rtcp)
         {
-            var receiveRtcp = typeof(RTPSession).GetMethod("OnReceiveRTCPPacket", BindingFlags.Instance | BindingFlags.NonPublic);
-            receiveRtcp.Invoke(Session, [0, new IPEndPoint(IPAddress.Loopback, 5005), rtcp]);
+            var receiveRtcp = (ReceivePacket)typeof(RTPSession).GetMethod("OnReceiveRTCPPacket", BindingFlags.Instance | BindingFlags.NonPublic).CreateDelegate(typeof(ReceivePacket), Session);
+            receiveRtcp(0, new IPEndPoint(IPAddress.Loopback, 5005), rtcp);
         }
 
         public void Dispose()

@@ -20,6 +20,7 @@
 //-----------------------------------------------------------------------------
 
 using System;
+using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Linq;
@@ -2705,9 +2706,6 @@ namespace SIPSorcery.Net
         }
 
         protected void OnReceive(int localPort, IPEndPoint remoteEndPoint, ReadOnlySpan<byte> buffer)
-            => OnReceiveOwnedBuffer(localPort, remoteEndPoint, buffer.ToArray());
-
-        private void OnReceiveOwnedBuffer(int localPort, IPEndPoint remoteEndPoint, byte[] buffer)
         {
             //logger.LogDebug("RTP Session OnReceive from {RemoteEndPoint} {length} bytes buffer[0]={zeroByte}.", remoteEndPoint, buffer.Length, buffer[0]);
 
@@ -2727,7 +2725,7 @@ namespace SIPSorcery.Net
                     // precede this end finishing its SRTP set up. Hold the packet rather than dropping
                     // it, otherwise the opening key frame is very often lost and, with no NACK or key
                     // frame request in the library, the stream never recovers.
-                    BufferPacketUntilSecureContextReady(localPort, remoteEndPoint, buffer);
+                    BufferPacketUntilSecureContextReady(localPort, remoteEndPoint, buffer.ToArray());
                 }
                 else
                 {
@@ -2745,9 +2743,9 @@ namespace SIPSorcery.Net
         /// as short as 8 bytes (an empty receiver report) or 12 bytes (a reduced-size standalone
         /// PLI, RFC 5506), so they can't be held to the 12 byte RTP header minimum.
         /// </summary>
-        private static bool IsPlausibleRtpOrRtcpPacket(byte[] buffer)
+        private static bool IsPlausibleRtpOrRtcpPacket(ReadOnlySpan<byte> buffer)
         {
-            if (buffer == null || buffer.Length < RTCPHeader.HEADER_BYTES_LENGTH + 4 || buffer[0] < 128 || buffer[0] > 191)
+            if (buffer.Length < RTCPHeader.HEADER_BYTES_LENGTH + 4 || buffer[0] < 128 || buffer[0] > 191)
             {
                 return false;
             }
@@ -2761,7 +2759,7 @@ namespace SIPSorcery.Net
             return buffer.Length > RTPHeader.MIN_HEADER_LEN;
         }
 
-        private void DispatchReceivedPacket(int localPort, IPEndPoint remoteEndPoint, byte[] buffer)
+        private void DispatchReceivedPacket(int localPort, IPEndPoint remoteEndPoint, ReadOnlySpan<byte> buffer)
         {
             if (Enum.IsDefined(typeof(RTCPReportTypesEnum), buffer[1]))
             {
@@ -2890,7 +2888,7 @@ namespace SIPSorcery.Net
             }
         }
 
-        private void OnReceiveRTCPPacket(int localPort, IPEndPoint remoteEndPoint, byte[] buffer)
+        private void OnReceiveRTCPPacket(int localPort, IPEndPoint remoteEndPoint, ReadOnlySpan<byte> buffer)
         {
             //logger.LogTrace("RTCP packet received from {RemoteEndPoint} {Buffer}", remoteEndPoint, buffer.HexStr());
 
@@ -2899,27 +2897,37 @@ namespace SIPSorcery.Net
             // Get the SSRC in order to be able to figure out which media type 
             // This will let us choose the apropriate unprotect methods
 
-            uint ssrc = BinaryPrimitives.ReadUInt32BigEndian(buffer.AsSpan(4));
+            uint ssrc = BinaryPrimitives.ReadUInt32BigEndian(buffer.Slice(4));
 
 
             MediaStream mediaStream = GetMediaStream(ssrc);
             var secureContext = mediaStream?.GetSecurityContext() ?? PrimaryStream?.GetSecurityContext();
 
+            RTCPCompoundPacket rtcpPkt;
             if (secureContext != null)
             {
-                int res = secureContext.UnprotectRtcpPacket(buffer, buffer.Length, out int outBufLen);
-                if (res != 0)
+                byte[] unprotected = ArrayPool<byte>.Shared.Rent(buffer.Length);
+                try
                 {
-                    logger.LogWarning("SRTCP unprotect failed for {MediaType} track, result {Result}.", PrimaryStream.MediaType, res);
-                    return;
+                    buffer.CopyTo(unprotected);
+                    int res = secureContext.UnprotectRtcpPacket(unprotected, buffer.Length, out int outBufLen);
+                    if (res != 0)
+                    {
+                        logger.LogWarning("SRTCP unprotect failed for {MediaType} track, result {Result}.", PrimaryStream.MediaType, res);
+                        return;
+                    }
+
+                    rtcpPkt = new RTCPCompoundPacket(unprotected.AsSpan(0, outBufLen));
                 }
-                else
+                finally
                 {
-                    buffer = buffer.AsSpan(0, outBufLen).ToArray();
+                    ArrayPool<byte>.Shared.Return(unprotected);
                 }
             }
-
-            var rtcpPkt = new RTCPCompoundPacket(buffer);
+            else
+            {
+                rtcpPkt = new RTCPCompoundPacket(buffer);
+            }
             if (rtcpPkt != null)
             {
                 mediaStream = GetMediaStream(rtcpPkt);
@@ -3007,7 +3015,7 @@ namespace SIPSorcery.Net
             #endregion
         }
 
-        private void OnReceiveRTPPacket(int localPort, IPEndPoint remoteEndPoint, byte[] buffer)
+        private void OnReceiveRTPPacket(int localPort, IPEndPoint remoteEndPoint, ReadOnlySpan<byte> buffer)
         {
             //logger.LogDebug("RTPSession OnReceiveRTPPacket received from {RemoteEndPoint} {length} bytes.", remoteEndPoint, buffer.Length);
 

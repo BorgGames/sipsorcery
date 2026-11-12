@@ -26,6 +26,7 @@
 
 using System;
 using System.Net;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
@@ -392,6 +393,23 @@ namespace SIPSorcery.Net.UnitTests
 
                 Assert.DoesNotContain("a=rtcp-mux", sdp.ToString());
             }
+        }
+
+        /// <summary>
+        /// A closed stream stops listening for its RTCP session's timeout, so a report timer callback
+        /// already under way cannot report a timeout for it.
+        /// </summary>
+        [Fact]
+        public void ClosedStream_NoLongerHandlesRtcpTimeout()
+        {
+            var stream = new VideoStream(new RtpSessionConfig(), 0);
+            stream.CreateRtcpSession(null);
+            var onTimeout = typeof(RTCPSession).GetField(nameof(RTCPSession.OnTimeout), BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(onTimeout.GetValue(stream.RtcpSession));
+
+            stream.IsClosed = true;
+
+            Assert.Null(onTimeout.GetValue(stream.RtcpSession));
         }
     }
 }

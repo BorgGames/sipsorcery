@@ -348,6 +348,11 @@ namespace SIPSorcery.Net
                 }
                 _isClosed = value;
 
+                if (value && RtcpSession != null)
+                {
+                    RtcpSession.OnTimeout -= RaiseOnTimeoutByIndex;
+                }
+
                 // Stamp the transition so sends arriving afterwards can distinguish the expected
                 // shutdown tail from a media source that was never stopped.
                 Interlocked.Exchange(ref _closedAtTicks, _isClosed ? DateTime.Now.Ticks : 0);

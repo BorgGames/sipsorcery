@@ -192,6 +192,7 @@ namespace SIPSorcery.Net
         /// Time to schedule the delivery of RTCP reports.
         /// </summary>
         private Timer m_rtcpReportTimer;
+        private Once m_started;
 
         private ReceptionReport m_receptionReport;
         private uint m_previousPacketsSentCount = 0;    // Used to track whether we have sent any packets since the last report was sent.
@@ -237,7 +238,7 @@ namespace SIPSorcery.Net
 
         public void Start()
         {
-            if (StartedAt != DateTime.MinValue)
+            if (!m_started.TryMarkOccurred())
             {
                 logger.LogWarning("Start was called on RTCP session for {CNameOrSsrc} but it has already been started.", !string.IsNullOrWhiteSpace(Cname) ? Cname : Ssrc.ToString());
             }

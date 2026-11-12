@@ -246,7 +246,7 @@ namespace SIPSorcery.Net
                     throw new ApplicationException($"The SCTP packet buffer was too short. Required {chunkLength} chunk bytes but only {length - posn} available.");
                 }
 
-                if (Enum.IsDefined(typeof(SctpChunkType), chunkType))
+                if (((SctpChunkType)chunkType).IsDefined())
                 {
                     var chunk = SctpChunk.Parse(buffer, posn);
                     chunks.Add(chunk);

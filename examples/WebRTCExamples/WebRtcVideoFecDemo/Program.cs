@@ -221,7 +221,7 @@ namespace WebRtcVideoFecDemo
     public class ImpairedRtpChannel : RTPChannel
     {
         private readonly RTPChannel _inner;
-        public Func<byte[], bool>? DropPredicate { get; set; }
+        public Func<ReadOnlySpan<byte>, bool>? DropPredicate { get; set; }
 
         public ImpairedRtpChannel(RTPChannel inner)
             : base(false, System.Net.IPAddress.Loopback)
@@ -230,13 +230,13 @@ namespace WebRtcVideoFecDemo
             RTPSrflxEndPoint = inner.RTPSrflxEndPoint;
         }
 
-        public override System.Net.Sockets.SocketError Send(RTPChannelSocketsEnum sendOn, System.Net.IPEndPoint dstEndPoint, byte[] buffer)
+        public override System.Net.Sockets.SocketError Send(RTPChannelSocketsEnum sendOn, System.Net.IPEndPoint dstEndPoint, ReadOnlySpan<byte> buffer, Func<Exception, bool>? onFailure = null)
         {
             if (sendOn == RTPChannelSocketsEnum.RTP && DropPredicate != null && DropPredicate(buffer))
             {
                 return System.Net.Sockets.SocketError.Success;
             }
-            return _inner.Send(sendOn, dstEndPoint, buffer);
+            return _inner.Send(sendOn, dstEndPoint, buffer, onFailure);
         }
     }
 }

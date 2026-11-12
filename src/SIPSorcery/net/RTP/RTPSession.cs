@@ -2928,7 +2928,6 @@ namespace SIPSorcery.Net
             {
                 rtcpPkt = new RTCPCompoundPacket(buffer);
             }
-            if (rtcpPkt != null)
             {
                 mediaStream = GetMediaStream(rtcpPkt);
 
@@ -3006,10 +3005,6 @@ namespace SIPSorcery.Net
                         //logger.LogTrace(rtcpPkt.GetDebugSummary());
                     }
                 }
-            }
-            else
-            {
-                logger.LogWarning("Failed to parse RTCP compound report.");
             }
 
             #endregion

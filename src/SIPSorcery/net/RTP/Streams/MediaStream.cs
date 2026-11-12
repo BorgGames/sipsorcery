@@ -496,6 +496,8 @@ namespace SIPSorcery.Net
             }
         }
 
+        public override string ToString() => $"{MediaType}[{Index}]";
+
         public MediaStream(RtpSessionConfig config, int index)
         {
             RtpSessionConfig = config;

@@ -20,6 +20,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Net;
+using System.Net.Sockets;
 using System.Threading;
 using Microsoft.Extensions.Logging;
 using SIPSorcery.Sys;
@@ -928,8 +929,14 @@ namespace SIPSorcery.Net
 
             try
             {
-                SendOnRtpChannel(rtpBuffer, sendLength);
-                RtcpSession?.RecordRtpPacketSend(sequenceNumber, timestamp, payloadLength);
+                if (SendOnRtpChannel(rtpBuffer, sendLength) == SocketError.Success)
+                {
+                    RtcpSession?.RecordRtpPacketSend(sequenceNumber, timestamp, payloadLength);
+                }
+                else
+                {
+                    FecMetrics.RecordTransportError();
+                }
             }
             catch (Exception ex)
             {
@@ -938,15 +945,15 @@ namespace SIPSorcery.Net
             }
         }
 
-        private void SendOnRtpChannel(byte[] rtpBuffer, int sendLength)
+        private SocketError SendOnRtpChannel(byte[] rtpBuffer, int sendLength)
         {
             if (IsUsingRelayEndPoint)
             {
-                rtpChannel.SendRelay(RTPChannelSocketsEnum.RTP, DestinationEndPoint, sendLength == rtpBuffer.Length ? rtpBuffer : rtpBuffer.AsSpan(0, sendLength).ToArray(), RtpRelayEndPoint.RelayServerEndPoint);
+                return rtpChannel.SendRelay(RTPChannelSocketsEnum.RTP, DestinationEndPoint, sendLength == rtpBuffer.Length ? rtpBuffer : rtpBuffer.AsSpan(0, sendLength).ToArray(), RtpRelayEndPoint.RelayServerEndPoint);
             }
             else
             {
-                rtpChannel.Send(RTPChannelSocketsEnum.RTP, DestinationEndPoint, rtpBuffer.AsSpan(0, sendLength));
+                return rtpChannel.Send(RTPChannelSocketsEnum.RTP, DestinationEndPoint, rtpBuffer.AsSpan(0, sendLength));
             }
         }
 
@@ -992,9 +999,15 @@ namespace SIPSorcery.Net
                 case RtpPacketResendBuffer.ClaimResult.Claimed:
                     try
                     {
-                        SendOnRtpChannel(packet.Array, packet.Count);
-                        RtcpSession?.RecordRtpPacketResend(payloadLength);
-                        RetransmissionMetrics.RecordRetransmission(packet.Count);
+                        if (SendOnRtpChannel(packet.Array, packet.Count) == SocketError.Success)
+                        {
+                            RtcpSession?.RecordRtpPacketResend(payloadLength);
+                            RetransmissionMetrics.RecordRetransmission(packet.Count);
+                        }
+                        else
+                        {
+                            FecMetrics.RecordTransportError();
+                        }
                     }
                     catch (Exception ex)
                     {

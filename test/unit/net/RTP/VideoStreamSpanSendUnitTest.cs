@@ -190,6 +190,30 @@ namespace SIPSorcery.Net.UnitTests
             }
         }
 
+        /// <summary>
+        /// A packet the transport fails to send is counted as a transport error rather than as sent.
+        /// </summary>
+        [Fact]
+        public void SendVideo_TransportError_NotCountedAsSent()
+        {
+            var stream = CreateStream("VP8", 96);
+            stream.RtcpSession = new RTCPSession(SDPMediaTypesEnum.video, VideoRtpGoldenScenario.SSRC);
+            var channel = new FailingRtpChannel();
+            stream.AddRtpChannel(channel);
+            try
+            {
+                stream.SendVideo(3000, new byte[3000]);
+
+                Assert.True(channel.Attempts >= 2);
+                Assert.Equal(channel.Attempts, stream.FecMetrics.TransportErrors);
+                Assert.Equal(0u, stream.RtcpSession.PacketsSentCount);
+            }
+            finally
+            {
+                channel.Close("test complete");
+            }
+        }
+
 #if NETCOREAPP
         /// <summary>
         /// With the transport, statistics and extensions out of the picture, sending a frame allocates little more
@@ -385,6 +409,22 @@ namespace SIPSorcery.Net.UnitTests
             {
                 Attempts++;
                 throw new SocketException((int)SocketError.NoBufferSpaceAvailable);
+            }
+        }
+
+        /// <summary>
+        /// Reports every send as failed, as RTPChannel does when the send throws synchronously.
+        /// </summary>
+        private sealed class FailingRtpChannel : RTPChannel
+        {
+            public int Attempts;
+
+            public FailingRtpChannel() : base(false, IPAddress.Loopback) { }
+
+            public override SocketError Send(RTPChannelSocketsEnum sendOn, IPEndPoint dstEndPoint, ReadOnlySpan<byte> buffer, Func<Exception, bool> onFailure = null)
+            {
+                Attempts++;
+                return SocketError.NetworkUnreachable;
             }
         }
 

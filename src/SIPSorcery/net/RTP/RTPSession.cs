@@ -35,7 +35,7 @@ using SIPSorceryMedia.Abstractions;
 
 namespace SIPSorcery.Net
 {
-    public delegate int ProtectRtpPacket(byte[] payload, int length, out int outputBufferLength);
+    public delegate int ProtectRtpPacket(Span<byte> payload, int length, out int outputBufferLength);
 
     /// <summary>
     /// The RTPSession class is the primary point for interacting with the Real-Time

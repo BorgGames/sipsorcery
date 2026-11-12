@@ -93,10 +93,10 @@ public class RTPSessionNackRetransmissionUnitTest
         Assert.Equal(SetDescriptionResultEnum.OK, sender.Session.SetRemoteDescription(SdpType.answer, SDP.ParseSDPDescription(answer)));
 
         sender.Session.VideoStream.SetSecurityContext(
-            (byte[] packet, int length, out int protectedLength) =>
+            (Span<byte> packet, int length, out int protectedLength) =>
             {
                 sender.ProtectCalls++;
-                packet.AsSpan(length, FAKE_SRTP_TAG_LENGTH).Fill(FAKE_SRTP_TAG);
+                packet.Slice(length, FAKE_SRTP_TAG_LENGTH).Fill(FAKE_SRTP_TAG);
                 protectedLength = length + FAKE_SRTP_TAG_LENGTH;
                 return 0;
             },
@@ -107,7 +107,7 @@ public class RTPSessionNackRetransmissionUnitTest
         return sender;
     }
 
-    private static int Unchanged(byte[] packet, int length, out int outputLength)
+    private static int Unchanged(Span<byte> packet, int length, out int outputLength)
     {
         outputLength = length;
         return 0;

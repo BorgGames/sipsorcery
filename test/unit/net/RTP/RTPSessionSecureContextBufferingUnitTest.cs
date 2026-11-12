@@ -14,6 +14,7 @@
 // BSD 3-Clause "New" or "Revised" License, see included LICENSE.md file.
 //-----------------------------------------------------------------------------
 
+using System;
 using System.Collections.Generic;
 using System.Net;
 using Microsoft.Extensions.Logging;
@@ -58,7 +59,7 @@ namespace SIPSorcery.Net.UnitTests
                 SetGlobalSecurityContext(PassThrough, PassThrough, PassThrough, PassThrough);
             }
 
-            private static int PassThrough(byte[] payload, int length, out int outputBufferLength)
+            private static int PassThrough(Span<byte> payload, int length, out int outputBufferLength)
             {
                 outputBufferLength = length;
                 return 0;

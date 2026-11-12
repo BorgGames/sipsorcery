@@ -248,7 +248,7 @@ namespace SIPSorcery.Net.UnitTests
         /// A deterministic stand in for SRTP protection: scrambles everything after the fixed header in place and
         /// appends a ten byte tag that depends on the whole packet, as an authentication tag would.
         /// </summary>
-        internal static int FakeProtect(byte[] packet, int length, out int outputBufferLength)
+        internal static int FakeProtect(Span<byte> packet, int length, out int outputBufferLength)
         {
             uint tag = 2166136261;
             for (int i = 0; i < length; i++)

@@ -19,6 +19,7 @@
 //-----------------------------------------------------------------------------
 
 using System;
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.Threading;
 using Org.BouncyCastle.Tls;
@@ -28,7 +29,7 @@ using SIPSorcery.Net.SharpSRTP.SRTP;
 
 namespace SIPSorcery.Net
 {
-    public delegate void OnDataReadyEvent(byte[] data);
+    public delegate void OnDataReadyEvent(ReadOnlySpan<byte> data);
     public delegate void OnDtlsAlertEvent(TlsAlertLevelsEnum alertLevel, TlsAlertTypesEnum alertType, string alertDescription);
 
     public class DtlsSrtpTransport : DatagramTransport
@@ -38,7 +39,7 @@ namespace SIPSorcery.Net
 
         private IDtlsSrtpPeer _connection;
 
-        private readonly BlockingCollection<byte[]> _data = new BlockingCollection<byte[]>(new ConcurrentQueue<byte[]>());
+        private readonly BlockingCollection<ArraySegment<byte>> _data = new BlockingCollection<ArraySegment<byte>>(new ConcurrentQueue<ArraySegment<byte>>());
 
         /// <summary>
         /// Cancelled if the transport is closed before the DTLS handshake has completed. A handshake
@@ -93,22 +94,22 @@ namespace SIPSorcery.Net
             return Transport != null;
         }
 
-        public int ProtectRTP(byte[] payload, int length, out int outputBufferLength)
+        public int ProtectRTP(Span<byte> payload, int length, out int outputBufferLength)
         {
             return Context.ProtectRtp(payload, length, out outputBufferLength);
         }
 
-        public int UnprotectRTP(byte[] payload, int length, out int outputBufferLength)
+        public int UnprotectRTP(Span<byte> payload, int length, out int outputBufferLength)
         {
             return Context.UnprotectRtp(payload, length, out outputBufferLength);
         }        
 
-        public int ProtectRTCP(byte[] payload, int length, out int outputBufferLength)
+        public int ProtectRTCP(Span<byte> payload, int length, out int outputBufferLength)
         {
             return Context.ProtectRtcp(payload, length, out outputBufferLength);
         }
 
-        public int UnprotectRTCP(byte[] payload, int length, out int outputBufferLength)
+        public int UnprotectRTCP(Span<byte> payload, int length, out int outputBufferLength)
         {
             return Context.UnprotectRtcp(payload, length, out outputBufferLength);
         }
@@ -122,9 +123,11 @@ namespace SIPSorcery.Net
 
         public int GetSendLimit() => MAXIMUM_MTU;
 
-        public void WriteToRecvStream(byte[] buffer)
+        public void WriteToRecvStream(ReadOnlySpan<byte> buffer)
         {
-            _data.Add(buffer);
+            byte[] chunk = ArrayPool<byte>.Shared.Rent(buffer.Length);
+            buffer.CopyTo(chunk);
+            _data.Add(new ArraySegment<byte>(chunk, 0, buffer.Length));
         }
 
         public void Close()
@@ -144,10 +147,15 @@ namespace SIPSorcery.Net
 
         public int Receive(byte[] buf, int off, int len, int waitMillis)
         {
+            return Receive(buf.AsSpan(off, len), waitMillis);
+        }
+
+        public int Receive(Span<byte> buffer, int waitMillis)
+        {
             // As per the BouncyCastle DatagramReceiver contract a wait of zero is an infinite timeout.
             int timeout = waitMillis == 0 ? Timeout.Infinite : Math.Max(waitMillis, 0);
 
-            byte[] data;
+            ArraySegment<byte> data;
 
             try
             {
@@ -162,35 +170,25 @@ namespace SIPSorcery.Net
                 throw new TlsFatalAlert(AlertDescription.user_canceled);
             }
 
-            Buffer.BlockCopy(data, 0, buf, off, data.Length);
-            return data.Length;
+            try
+            {
+                data.AsSpan().CopyTo(buffer);
+                return data.Count;
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(data.Array);
+            }
         }
 
         public void Send(byte[] buf, int off, int len)
         {
-            if (off != 0 || len < buf.Length)
-            {
-                buf = buf.AsSpan(off, len).ToArray();
-            }
-            OnDataReady?.Invoke(buf);
-        }
-
-#if NETCOREAPP2_1_OR_GREATER || NETSTANDARD2_1_OR_GREATER
-        public int Receive(Span<byte> buffer, int waitMillis)
-        {
-            byte[] buff = buffer.ToArray();
-            int len = Receive(buff, 0, buff.Length, waitMillis);
-            if (len > 0)
-            {
-                buff.AsSpan(0, len).CopyTo(buffer);
-            }
-            return len;
+            Send(buf.AsSpan(off, len));
         }
 
         public void Send(ReadOnlySpan<byte> buffer)
         {
-            Send(buffer.ToArray(), 0, buffer.Length);
+            OnDataReady?.Invoke(buffer);
         }
-#endif
     }
 }

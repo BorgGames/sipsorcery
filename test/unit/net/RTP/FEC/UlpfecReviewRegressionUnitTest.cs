@@ -200,7 +200,7 @@ namespace SIPSorcery.Net.UnitTests
             using var receiver = new Receiver(secure: true);
             receiver.Stream.RemoteTrack.Ssrc = Ssrc;
             bool authenticated = true;
-            int Unprotect(byte[] buffer, int length, out int resultLength)
+            int Unprotect(Span<byte> buffer, int length, out int resultLength)
             {
                 resultLength = length;
                 return authenticated ? 0 : -1;

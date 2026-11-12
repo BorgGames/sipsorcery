@@ -23,6 +23,8 @@
 using ReadOnlyBytes = System.ReadOnlySpan<byte>;
 using Bytes = System.Span<byte>;
 #else
+using System;
+using System.Buffers;
 using ReadOnlyBytes = System.ArraySegment<byte>;
 using Bytes = byte[];
 #endif
@@ -52,5 +54,40 @@ namespace SIPSorcery.Net.SharpSRTP.SRTP
 
         public static int UnprotectRtcp(this ISrtpContext context, Bytes payload, int length, out int outputBufferLength)
             => context.UnprotectRtcp(payload.Slice(0, length), payload, out outputBufferLength);
+
+#if !NET8_0_OR_GREATER
+        public static int ProtectRtp(this ISrtpContext context, Span<byte> payload, int length, out int outputBufferLength)
+            => InPooledArray(context, payload, length, out outputBufferLength, static (ISrtpContext c, byte[] p, int l, out int o) => c.ProtectRtp(p, l, out o));
+
+        public static int UnprotectRtp(this ISrtpContext context, Span<byte> payload, int length, out int outputBufferLength)
+            => InPooledArray(context, payload, length, out outputBufferLength, static (ISrtpContext c, byte[] p, int l, out int o) => c.UnprotectRtp(p, l, out o));
+
+        public static int ProtectRtcp(this ISrtpContext context, Span<byte> payload, int length, out int outputBufferLength)
+            => InPooledArray(context, payload, length, out outputBufferLength, static (ISrtpContext c, byte[] p, int l, out int o) => c.ProtectRtcp(p, l, out o));
+
+        public static int UnprotectRtcp(this ISrtpContext context, Span<byte> payload, int length, out int outputBufferLength)
+            => InPooledArray(context, payload, length, out outputBufferLength, static (ISrtpContext c, byte[] p, int l, out int o) => c.UnprotectRtcp(p, l, out o));
+
+        private delegate int ArrayTransform(ISrtpContext context, byte[] payload, int length, out int outputBufferLength);
+
+        private static int InPooledArray(ISrtpContext context, Span<byte> payload, int length, out int outputBufferLength, ArrayTransform transform)
+        {
+            byte[] buffer = ArrayPool<byte>.Shared.Rent(payload.Length);
+            try
+            {
+                payload.Slice(0, length).CopyTo(buffer);
+                int result = transform(context, buffer, length, out outputBufferLength);
+                if (result == 0)
+                {
+                    buffer.AsSpan(0, outputBufferLength).CopyTo(payload);
+                }
+                return result;
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(buffer);
+            }
+        }
+#endif
     }
 }

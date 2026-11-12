@@ -266,9 +266,6 @@ public class RTPChannel : IDisposable
     /// <param name="buffer">The data to send.</param>
     /// <returns>The result of initiating the send. This result does not reflect anything about
     /// whether the remote party received the packet or not.</returns>
-    public virtual SocketError Send(RTPChannelSocketsEnum sendOn, IPEndPoint dstEndPoint, byte[] buffer)
-        => Send(sendOn, dstEndPoint, buffer.AsSpan());
-
     public virtual SocketError Send(RTPChannelSocketsEnum sendOn, IPEndPoint dstEndPoint, ReadOnlySpan<byte> buffer, Func<Exception, bool>? onFailure = null)
     {
         if (m_isClosed)

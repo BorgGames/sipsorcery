@@ -40,11 +40,10 @@
   </ItemGroup>
 
   <PropertyGroup>
-    <TargetFrameworks>netstandard2.0;netstandard2.1;netcoreapp3.1;net462;net5.0;net6.0;net8.0;net9.0;net10.0</TargetFrameworks>
+    <TargetFrameworks>netstandard2.0;net462;net8.0;net10.0</TargetFrameworks>
     <LangVersion>14.0</LangVersion>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <Nullable>annotations</Nullable>
-    <SuppressTfmSupportBuildWarnings>true</SuppressTfmSupportBuildWarnings>
     <NoWarn>$(NoWarn);SYSLIB0050</NoWarn>
     <TreatWarningsAsErrors>True</TreatWarningsAsErrors>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
@@ -62,7 +61,6 @@
     <PackageId>Borg.SIPSorcery</PackageId>
     <AssemblyName>Borg.SIPSorcery</AssemblyName>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <PackageProjectUrl>https://github.com/BorgGames/sipsorcery/tree/borg/master/src/SIPSorcery</PackageProjectUrl>
     <PackageIconUrl>http://www.sipsorcery.com/mainsite/favicon.ico</PackageIconUrl>
     <PackageIcon>icon.png</PackageIcon>
@@ -134,8 +132,8 @@
     <EmbedUntrackedSources>true</EmbedUntrackedSources>
 
     <!-- Optional: Build symbol package (.snupkg) to distribute the PDB containing Source Link -->
+    <DebugType>Embedded</DebugType>
     <IncludeSymbols>true</IncludeSymbols>
-    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
     <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
   </PropertyGroup>
 

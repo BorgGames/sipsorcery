@@ -32,7 +32,7 @@ namespace SIPSorcery.Net
             Fmtp = null;
         }
 
-        public SDPApplicationMediaFormat(string id, string rtpmap, string fmtp)
+        public SDPApplicationMediaFormat(string id, string? rtpmap, string? fmtp)
         {
             ID = id;
             Rtpmap = rtpmap;

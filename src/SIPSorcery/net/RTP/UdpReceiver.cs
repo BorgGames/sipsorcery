@@ -51,8 +51,15 @@ public class UdpReceiver
     protected readonly Socket m_socket;
     protected readonly byte[] m_recvBuffer;
     protected bool m_isClosed;
-    protected bool m_isRunningReceive;
+    protected volatile bool m_isRunningReceive;
     protected readonly IPEndPoint m_localEndPoint;
+
+    /// <summary>
+    /// Guards the check and set of <see cref="m_isRunningReceive"/>. Senders call <see cref="BeginReceiveFrom"/>
+    /// from their own threads to restart a stopped receive, and two receives outstanding at once share
+    /// <see cref="m_recvBuffer"/>: each overwrites the other's datagrams, for good, as each re-arms on completion.
+    /// </summary>
+    private readonly object m_receiveLock = new object();
     protected readonly AddressFamily m_addressFamily;
 
     public virtual bool IsClosed
@@ -114,19 +121,32 @@ public class UdpReceiver
     /// </summary>
     public virtual void BeginReceiveFrom()
     {
-        //Prevent call BeginReceiveFrom if it is already running
-        if (m_isClosed && m_isRunningReceive)
+        // Only one receive may be outstanding: the caller that sets the flag posts it.
+        lock (m_receiveLock)
         {
-            m_isRunningReceive = false;
-        }
-        if (m_isRunningReceive || m_isClosed)
-        {
-            return;
+            if (m_isClosed)
+            {
+                m_isRunningReceive = false;
+                return;
+            }
+            if (m_isRunningReceive)
+            {
+                return;
+            }
+            m_isRunningReceive = true;
         }
 
+        PostReceive();
+    }
+
+    /// <summary>
+    /// Posts the next receive. Called only while holding the receive, that is with <see cref="m_isRunningReceive"/>
+    /// set by this caller (<see cref="BeginReceiveFrom"/>) or still set by the receive that just completed.
+    /// </summary>
+    private void PostReceive()
+    {
         try
         {
-            m_isRunningReceive = true;
             EndPoint recvEndPoint = m_addressFamily == AddressFamily.InterNetwork ? IPv4AnyEndPoint : IPv6AnyEndPoint;
 #if NET8_0_OR_GREATER // NET6_0_OR_GREATER bandwidth test falters at some point if this is enabled
             var recive = m_socket.ReceiveFromAsync(m_recvBuffer.AsMemory(), SocketFlags.None, recvEndPoint);
@@ -199,10 +219,13 @@ public class UdpReceiver
         }
         finally
         {
-            m_isRunningReceive = false;
             if (!m_isClosed)
             {
-                BeginReceiveFrom();
+                PostReceive();
+            }
+            else
+            {
+                m_isRunningReceive = false;
             }
         }
     }
@@ -215,10 +238,13 @@ public class UdpReceiver
         }
         finally
         {
-            m_isRunningReceive = false;
             if (!m_isClosed)
             {
-                BeginReceiveFrom();
+                PostReceive();
+            }
+            else
+            {
+                m_isRunningReceive = false;
             }
         }
     }
@@ -255,10 +281,15 @@ public class UdpReceiver
         }
         finally
         {
-            m_isRunningReceive = false;
+            // Hand the receive straight on rather than clearing the flag and calling BeginReceiveFrom: between
+            // the two a sender's BeginReceiveFrom would see no receive running and post a second one.
             if (!m_isClosed)
             {
-                BeginReceiveFrom();
+                PostReceive();
+            }
+            else
+            {
+                m_isRunningReceive = false;
             }
         }
     }

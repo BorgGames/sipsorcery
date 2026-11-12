@@ -50,6 +50,7 @@ public sealed class MatroskaSinkNode : ISinkNode
     private const int AUDIO_TRACK = 2;
     private const int QUEUE_CAPACITY = 512;
     private const int HEADER_WAIT_MS = 3000;   // How long to hold frames waiting for the other track.
+    private const int KEY_FRAME_WARN_AFTER = 90;   // ~3s at 30fps of video with no key frame yet.
     private const int MAX_HELD_FRAMES = 1024;
 
     private readonly string? _filePath;   // null for stdout
@@ -69,6 +70,12 @@ public sealed class MatroskaSinkNode : ISinkNode
     private bool _failed;
     private long _firstArrivalMs = -1;
     private byte[]? _avcC;
+    private Av1.SequenceHeader? _av1SequenceHeader;
+    private byte[]? _hvcC;
+    private H265.SpsInfo? _h265Sps;
+    private int _videoDroppedBeforeKeyFrame;
+    private int _av1TruncatedUnits;
+    private bool _warnedAv1Truncated;
     private MatroskaTrack? _videoTrack;
     private MatroskaTrack? _audioTrack;
     private bool _warnedVideoCodec;
@@ -232,19 +239,52 @@ public sealed class MatroskaSinkNode : ISinkNode
             clock = _videoClock;
             clockRate = frame.VideoFormat.ClockRate > 0 ? frame.VideoFormat.ClockRate : 90000;
 
-            if (frame.VideoFormat.Codec == VideoCodecsEnum.H264)
+            // Each codec says "key frame" in its own place: H264 in an IDR NAL, VP8 in the frame
+            // tag's P bit, VP9 in the uncompressed header's frame_type, AV1 in a shown frame whose
+            // frame_type is KEY_FRAME. Everything except H264 is written through unchanged - the
+            // Matroska payload for VP8/VP9/AV1 is the frame exactly as it came off the wire.
+            switch (frame.VideoFormat.Codec)
             {
-                data = H264.ToLengthPrefixed(frame.Payload, out keyFrame);
-            }
-            else
-            {
-                data = frame.Payload;
-                keyFrame = (frame.Payload[0] & 0x01) == 0;   // VP8: the frame tag's P bit is 0 for a key frame.
+                case VideoCodecsEnum.H264:
+                    data = H264.ToLengthPrefixed(frame.Payload, out keyFrame);
+                    break;
+
+                case VideoCodecsEnum.H265:
+                    data = H265.ToLengthPrefixed(frame.Payload, out keyFrame);
+                    break;
+
+                case VideoCodecsEnum.VP9:
+                    data = frame.Payload;
+                    keyFrame = Vp9.TryReadFrameInfo(frame.Payload, out var vp9Frame) && vp9Frame.IsKeyFrame;
+                    break;
+
+                case VideoCodecsEnum.AV1:
+                    data = frame.Payload;
+                    keyFrame = Av1.IsKeyFrame(frame.Payload, _av1SequenceHeader?.ReducedStillPictureHeader ?? false,
+                        out bool av1Truncated);
+                    ReportAv1Truncation(av1Truncated);
+                    break;
+
+                default:
+                    data = frame.Payload;
+                    keyFrame = (frame.Payload[0] & 0x01) == 0;   // VP8: the frame tag's P bit is 0 for a key frame.
+                    break;
             }
 
-            // A decoder can only start on a key frame, so drop video until the first one.
+            // A decoder can only start on a key frame, so drop video until the first one. If that
+            // never happens the container ends up with a video track and no frames in it, which is
+            // indistinguishable from "the codec is unsupported" when looking at the output. Say so
+            // once rather than leaving a silent failure: it means key frame detection did not
+            // recognise anything the source sent.
             if (!clock.Started && !keyFrame)
             {
+                if (++_videoDroppedBeforeKeyFrame == KEY_FRAME_WARN_AFTER)
+                {
+                    _logger.LogWarning(
+                        "No {Codec} key frame found in the first {Count} video frames, so none have been written yet. " +
+                        "The stream may have started mid-GOP (a key frame should follow), or key frame detection did not recognise it.",
+                        frame.VideoFormat.Codec, KEY_FRAME_WARN_AFTER);
+                }
                 return;
             }
         }
@@ -272,6 +312,28 @@ public sealed class MatroskaSinkNode : ISinkNode
         _frames++;
     }
 
+    /// <summary>
+    /// Counts AV1 temporal units that could not be walked and says so once. A malformed temporal
+    /// unit is skipped rather than failing the sink (a reassembled keyframe that lost a fragment
+    /// would otherwise end the whole stream), but if they keep coming that is the reason video is
+    /// missing, and silence here would leave nothing to diagnose from.
+    /// </summary>
+    private void ReportAv1Truncation(bool truncated)
+    {
+        if (!truncated)
+        {
+            return;
+        }
+
+        _av1TruncatedUnits++;
+        if (!_warnedAv1Truncated)
+        {
+            _warnedAv1Truncated = true;
+            _logger.LogWarning("An AV1 temporal unit could not be parsed and was skipped; it is malformed or lost a " +
+                               "fragment in reassembly. Video may be missing until the next usable key frame.");
+        }
+    }
+
     private MatroskaTrack? TryCreateVideoTrack(MediaFrame frame)
     {
         switch (frame.VideoFormat.Codec)
@@ -290,10 +352,41 @@ public sealed class MatroskaSinkNode : ISinkNode
                 int height = BinaryPrimitives.ReadUInt16LittleEndian(frame.Payload.AsSpan(8)) & 0x3FFF;
                 return new MatroskaTrack(VIDEO_TRACK, true, "V_VP8", Width: width, Height: height);
 
+            case VideoCodecsEnum.H265:
+                // hvcC needs the VPS, SPS and PPS, which travel in-band with the IRAP pictures.
+                _hvcC ??= H265.TryBuildHvcC(frame.Payload, out _h265Sps);
+                return _hvcC == null || _h265Sps == null ? null
+                    : new MatroskaTrack(VIDEO_TRACK, true, "V_MPEGH/ISO/HEVC", _hvcC,
+                        Width: _h265Sps.Width, Height: _h265Sps.Height);
+
+            case VideoCodecsEnum.VP9:
+                // Like VP8, VP9 needs no CodecPrivate; the dimensions come from a key frame's
+                // uncompressed header, so wait for one.
+                if (!Vp9.TryReadFrameInfo(frame.Payload, out var vp9) || !vp9.IsKeyFrame)
+                {
+                    return null;
+                }
+                return new MatroskaTrack(VIDEO_TRACK, true, "V_VP9", Width: vp9.Width, Height: vp9.Height);
+
+            case VideoCodecsEnum.AV1:
+                // av1C needs the sequence header OBU, which travels in-band at the start of every
+                // coded video sequence, so wait for a temporal unit that carries one.
+                if (_av1SequenceHeader == null)
+                {
+                    _av1SequenceHeader = Av1.TryParseSequenceHeader(frame.Payload, out bool truncated);
+                    ReportAv1Truncation(truncated);
+                }
+                if (_av1SequenceHeader == null)
+                {
+                    return null;
+                }
+                return new MatroskaTrack(VIDEO_TRACK, true, "V_AV1", Av1.BuildAv1C(_av1SequenceHeader),
+                    Width: _av1SequenceHeader.MaxFrameWidth, Height: _av1SequenceHeader.MaxFrameHeight);
+
             default:
                 if (!_warnedVideoCodec)
                 {
-                    _logger.LogWarning("The Matroska sink does not support {Codec} video yet (H264 and VP8 only); the video is left out.", frame.VideoFormat.Codec);
+                    _logger.LogWarning("The Matroska sink does not support {Codec} video yet (H264, H265, VP8, VP9 and AV1); the video is left out.", frame.VideoFormat.Codec);
                     _warnedVideoCodec = true;
                 }
                 return null;

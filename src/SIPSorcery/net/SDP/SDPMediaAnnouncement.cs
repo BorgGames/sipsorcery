@@ -27,7 +27,9 @@
 //-----------------------------------------------------------------------------
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using Microsoft.Extensions.Logging;
 using SIPSorceryMedia.Abstractions;
@@ -56,7 +58,7 @@ namespace SIPSorcery.Net
         /// <param name="cname">Optional. The CNAME value to use in RTCP SDES sections.</param>
         /// <param name="groupID">Optional. If this "ssrc" attribute is part of a 
         /// group this is the group ID.</param>
-        public SDPSsrcAttribute(uint ssrc, string cname, string groupID)
+        public SDPSsrcAttribute(uint ssrc, string? cname, string? groupID)
         {
             SSRC = ssrc;
             Cname = cname;
@@ -70,7 +72,8 @@ namespace SIPSorcery.Net
         public const string MEDIA_EXTENSION_MAP_ATTRIBUE_PREFIX = "a=" + MEDIA_EXTENSION_MAP_ATTRIBUE_NAME + ":";
         public const string MEDIA_FORMAT_ATTRIBUTE_NAME = "rtpmap";
         public const string MEDIA_FORMAT_ATTRIBUTE_PREFIX = "a=" + MEDIA_FORMAT_ATTRIBUTE_NAME + ":";
-        public const string MEDIA_FORMAT_FEEDBACK_PREFIX = "a=rtcp-fb:";
+        public const string MEDIA_FORMAT_FEEDBACK_NAME = "rtcp-fb";
+        public const string MEDIA_FORMAT_FEEDBACK_PREFIX = "a=" + MEDIA_FORMAT_FEEDBACK_NAME + ":";
         public const string MEDIA_FORMAT_PARAMETERS_ATTRIBUE_NAME = "fmtp";
         public const string MEDIA_FORMAT_PARAMETERS_ATTRIBUE_PREFIX = "a=" + MEDIA_FORMAT_PARAMETERS_ATTRIBUE_NAME + ":";
         public const string MEDIA_FORMAT_SSRC_ATTRIBUE_NAME = "ssrc";
@@ -251,43 +254,46 @@ namespace SIPSorcery.Net
             MessageMediaFormat = messageMediaFormat;
         }
 
-        public void ParseMediaFormats(string formatList)
-        {
-            if (!String.IsNullOrWhiteSpace(formatList))
-            {
-                var formatListSpan = formatList.AsSpan();
-                foreach (var formatIDRange in formatListSpan.SplitAny())
-                {
-                    var formatIDSpan = formatListSpan[formatIDRange];
+        public void ParseMediaFormats(string formatList) => ParseMediaFormats(formatList.AsSpan());
 
-                    if (Media == SDPMediaTypesEnum.application)
+        public void ParseMediaFormats(ReadOnlySpan<char> formatList)
+        {
+            if (formatList.IsWhiteSpace())
+            {
+                return;
+            }
+
+            foreach (var formatIDRange in formatList.SplitAny())
+            {
+                var formatIDSpan = formatList[formatIDRange];
+
+                if (Media == SDPMediaTypesEnum.application)
+                {
+                    var formatID = formatIDSpan.ToString();
+                    ApplicationMediaFormats.Add(formatID, new SDPApplicationMediaFormat(formatID));
+                }
+                else if (Media == SDPMediaTypesEnum.message)
+                {
+                    //TODO
+                }
+                else
+                {
+                    // The range check is cheaper than the lookup and rejects every dynamic payload type, which is
+                    // most of the formats a WebRTC offer lists, so it runs first.
+                    if (int.TryParse(formatIDSpan, out var id)
+                        && id < SDPAudioVideoMediaFormat.DYNAMIC_ID_MIN
+                        && !MediaFormats.ContainsKey(id))
                     {
-                        var formatID = formatIDSpan.ToString();
-                        ApplicationMediaFormats.Add(formatID, new SDPApplicationMediaFormat(formatID));
-                    }
-                    else if (Media == SDPMediaTypesEnum.message)
-                    {
-                        //TODO
-                    }
-                    else
-                    {
-                        if (int.TryParse(formatIDSpan, out var id)
-                            && !MediaFormats.ContainsKey(id)
-                            && id < SDPAudioVideoMediaFormat.DYNAMIC_ID_MIN)
+                        if (SDPAudioVideoMediaFormat.IsWellKnownFormat(id))
                         {
-                            var formatID = formatIDSpan.ToString();
-                            if (Enum.IsDefined(typeof(SDPWellKnownMediaFormatsEnum), id) &&
-                                Enum.TryParse<SDPWellKnownMediaFormatsEnum>(formatID, out var wellKnown))
-                            {
-                                MediaFormats.Add(id, new SDPAudioVideoMediaFormat(wellKnown));
-                            }
-                            else
-                            {
-                                // Endpoints routinely list static payload types the library doesn't know (e.g. ones
-                                // in RFC 3551's unassigned range). Dropping them is the correct handling and needs
-                                // no action, so this is debug detail rather than a warning.
-                                logger.LogDebug("Excluding unrecognised well known media format ID {FormatID}.", id);
-                            }
+                            MediaFormats.Add(id, new SDPAudioVideoMediaFormat((SDPWellKnownMediaFormatsEnum)id));
+                        }
+                        else
+                        {
+                            // Endpoints routinely list static payload types the library doesn't know (e.g. ones
+                            // in RFC 3551's unassigned range). Dropping them is the correct handling and needs
+                            // no action, so this is debug detail rather than a warning.
+                            logger.LogSdpExcludingUnrecognisedWellKnownFormat(id);
                         }
                     }
                 }
@@ -601,9 +607,9 @@ namespace SIPSorcery.Net
                                 .Append(mediaFormat.Rtpmap).Append(m_CRLF);
                         }
 
-                        // Leaving out the feedback attribute for now. It should only be added where it's present in a parsed SDP packet or
-                        // is opted in in a produced SDP packet. AC 7 Nov 2024, see also https://github.com/sipsorcery-org/sipsorcery/issues/1130.
-
+                        // RTCP feedback (RFC 4585). Local video formats offer SDPAudioVideoMediaFormat.DefaultVideoRtcpFeedbackMessages,
+                        // parsed formats carry what the remote party listed and negotiated formats the intersection of both.
+                        // See also https://github.com/sipsorcery-org/sipsorcery/issues/1130.
                         if (mediaFormat.Kind == SDPMediaTypesEnum.video)
                         {
                             foreach (var rtcpFeedbackMessage in mediaFormat.SupportedRtcpFeedbackMessages)
@@ -619,6 +625,170 @@ namespace SIPSorcery.Net
                                 .Append(mediaFormat.Fmtp).Append(m_CRLF);
                         }
                     }
+                }
+            }
+        }
+
+        /// <summary>
+        /// RTCP feedback attributes ("a=rtcp-fb:pt type") collected while parsing, in document order. They are
+        /// applied to the media formats once the whole SDP has been parsed since they can appear before or after
+        /// the matching rtpmap attribute. FormatID is null for the "*" wildcard and for payload types that are not
+        /// numbers. Feedback is the normalised type, or null if it can never apply to a format. Line is the attribute
+        /// to keep as an extra attribute if no format ends up with the payload type.
+        /// </summary>
+        private List<(int? FormatID, string Feedback, string Line)> _parsedRtcpFeedback;
+
+        /// <summary>
+        /// Records an "a=rtcp-fb" attribute found while parsing an SDP.
+        /// </summary>
+        internal void AddParsedRtcpFeedback(ReadOnlySpan<char> formatID, ReadOnlySpan<char> feedback, ReadOnlySpan<char> line)
+        {
+            int? id = null;
+            string normalisedFeedback = null;
+            string extraLine = null;
+
+            if (formatID is "*")
+            {
+                normalisedFeedback = SDPAudioVideoMediaFormat.GetNormalisedRtcpFeedback(feedback);
+            }
+            else if (int.TryParse(formatID, out var parsedID))
+            {
+                id = parsedID;
+
+                // Payload types match format IDs as text, so for example "096" never applies to format 96.
+                if (formatID.SequenceEqual(parsedID.ToString().AsSpan()))
+                {
+                    normalisedFeedback = SDPAudioVideoMediaFormat.GetNormalisedRtcpFeedback(feedback);
+                }
+
+                // Formats are only ever added while parsing, so one that exists now will still exist when the
+                // feedback is applied and the attribute will not be needed as an extra attribute.
+                if (!MediaFormats.ContainsKey(parsedID))
+                {
+                    extraLine = line.ToString();
+                }
+                else if (normalisedFeedback is null)
+                {
+                    return;
+                }
+            }
+            else
+            {
+                extraLine = line.ToString();
+            }
+
+            (_parsedRtcpFeedback ??= new List<(int?, string, string)>()).Add((id, normalisedFeedback, extraLine));
+        }
+
+        /// <summary>
+        /// Called at the end of parsing. Every video format gets an explicit feedback list,
+        /// empty if the remote party listed none for it, so parsed formats never pick up the local defaults.
+        /// Attributes for payload types that have no matching format are kept as extra attributes so
+        /// they still round trip.
+        /// </summary>
+        internal void ApplyParsedRtcpFeedback()
+        {
+            if (Media != SDPMediaTypesEnum.video)
+            {
+                return;
+            }
+
+            var parsed = _parsedRtcpFeedback;
+            _parsedRtcpFeedback = null;
+
+            // The IDs are copied since .NET Framework does not allow values to be replaced while enumerating.
+            var ids = MediaFormats.Keys.ToArray();
+
+            if (parsed is null)
+            {
+                foreach (var id in ids)
+                {
+                    MediaFormats[id] = MediaFormats[id].WithParsedRtcpFeedbackMessages(default);
+                }
+
+                return;
+            }
+
+            // Each format gets the feedback that applies to it in document order with case insensitive duplicates
+            // removed, as WithUpdatedRtcpFeedbackMessages does, collected in a buffer shared by all the formats.
+            // Rather than every format going through every attribute, the attributes for a payload type are sorted
+            // by payload type and then position, so each format only goes through its own attributes, merged in
+            // document order with the "*" ones.
+            var keys = ArrayPool<long>.Shared.Rent(parsed.Count);
+            var wildcards = ArrayPool<int>.Shared.Rent(parsed.Count);
+            var buffer = ArrayPool<string>.Shared.Rent(parsed.Count);
+            try
+            {
+                int keyCount = 0, wildcardCount = 0;
+                for (var i = 0; i < parsed.Count; i++)
+                {
+                    var (formatID, feedback, _) = parsed[i];
+                    if (feedback is null)
+                    {
+                        continue;
+                    }
+
+                    if (formatID is { } id)
+                    {
+                        // The payload type in the high half and the position in the low half, so negative payload
+                        // types sort first and the attributes for a payload type keep their document order.
+                        keys[keyCount++] = ((long)id << 32) | (uint)i;
+                    }
+                    else
+                    {
+                        wildcards[wildcardCount++] = i;
+                    }
+                }
+
+                Array.Sort(keys, 0, keyCount);
+
+                var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var id in ids)
+                {
+                    var k = Array.BinarySearch(keys, 0, keyCount, (long)id << 32);
+                    k = k < 0 ? ~k : k;
+                    var w = 0;
+                    var count = 0;
+                    while (true)
+                    {
+                        // The position of the format's next attribute or the next "*" one, whichever comes first.
+                        var index = k < keyCount && keys[k] >> 32 == id ? (int)keys[k] : int.MaxValue;
+                        if (w < wildcardCount && wildcards[w] < index)
+                        {
+                            index = wildcards[w++];
+                        }
+                        else if (index == int.MaxValue)
+                        {
+                            break;
+                        }
+                        else
+                        {
+                            k++;
+                        }
+
+                        var feedback = parsed[index].Feedback;
+                        if (seen.Add(feedback))
+                        {
+                            buffer[count++] = feedback;
+                        }
+                    }
+
+                    seen.Clear();
+                    MediaFormats[id] = MediaFormats[id].WithParsedRtcpFeedbackMessages(buffer.AsSpan(0, count));
+                }
+            }
+            finally
+            {
+                ArrayPool<long>.Shared.Return(keys);
+                ArrayPool<int>.Shared.Return(wildcards);
+                ArrayPool<string>.Shared.Return(buffer, clearArray: true);
+            }
+
+            foreach (var (formatID, _, line) in parsed)
+            {
+                if (line is not null && !(formatID is { } id && MediaFormats.ContainsKey(id)))
+                {
+                    AddExtra(line);
                 }
             }
         }
@@ -666,7 +836,12 @@ namespace SIPSorcery.Net
         }
 
         public void AddCryptoLine(string crypto)
-            {
+        {
+            this.SecurityDescriptions.Add(SDPSecurityDescription.Parse(crypto));
+        }
+
+        public void AddCryptoLine(ReadOnlySpan<char> crypto)
+        {
             this.SecurityDescriptions.Add(SDPSecurityDescription.Parse(crypto));
         }
 

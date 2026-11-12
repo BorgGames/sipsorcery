@@ -28,6 +28,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Threading;
 using Microsoft.Extensions.Logging;
@@ -59,6 +60,7 @@ namespace SIPSorcery.Net
         private const float RTCP_INTERVAL_LOW_RANDOMISATION_FACTOR = 0.5F;
         private const float RTCP_INTERVAL_HIGH_RANDOMISATION_FACTOR = 1.5F;
         private const int NO_ACTIVITY_TIMEOUT_FACTOR = 6;
+        private const double NTP_TIMESTAMP32_UNITS_PER_SECOND = 65536;
 
         private static readonly ILogger logger = LogFactory.CreateLogger<RTCPSession>();
 
@@ -133,6 +135,12 @@ namespace SIPSorcery.Net
         public ulong LastNtpTimestampSent { get; private set; }
 
         /// <summary>
+        /// The round trip time to the remote party, from the last reception report it sent for our packets
+        /// (RFC 3550 section 6.4.1). Zero until measured.
+        /// </summary>
+        public TimeSpan RoundTripTime { get; private set; }
+
+        /// <summary>
         /// Number of RTP packets received from the remote party.
         /// </summary>
         public uint PacketsReceivedCount { get; private set; }
@@ -160,9 +168,25 @@ namespace SIPSorcery.Net
         public bool IsClosed { get; private set; } = false;
 
         /// <summary>
-        /// Indicates the sample rate for RTP media data.
+        /// Indicates the sample rate for RTP media data. This is the RTP clock rate used for the
+        /// RTP timestamp in sender reports. It is also the rate interarrival jitter is measured
+        /// at for received packets whose payload type has no clock rate set with
+        /// <see cref="SetReceivePayloadClockRates"/>.
         /// </summary>
         public int PayloadSampleRateHz { get; set; } = 0;
+
+        /// <summary>
+        /// The RTP clock rate for each payload type that can be received, keyed by payload ID.
+        /// The reference is replaced rather than the dictionary modified so the receive path
+        /// can read it without locking.
+        /// </summary>
+        private Dictionary<int, int> m_receivePayloadClockRates = new Dictionary<int, int>();
+
+        /// <summary>
+        /// The RTP clock rate the previous received packet's arrival time was measured at. Zero
+        /// means the NTP based fallback clock, -1 that no packet has been received yet.
+        /// </summary>
+        private int m_receiveClockRate = -1;
 
         /// <summary>
         /// Time to schedule the delivery of RTCP reports.
@@ -171,6 +195,7 @@ namespace SIPSorcery.Net
 
         private ReceptionReport m_receptionReport;
         private uint m_previousPacketsSentCount = 0;    // Used to track whether we have sent any packets since the last report was sent.
+        private readonly object m_sentCountsLock = new object();
 
         /// <summary>
         /// Event handler for sending RTCP reports.
@@ -248,6 +273,34 @@ namespace SIPSorcery.Net
         /// </summary>
         public void RecordRtpPacketReceived(RTPPacket rtpPacket)
         {
+            RecordRtpPacketReceived(rtpPacket, DateTime.Now);
+        }
+
+        /// <summary>
+        /// Sets the RTP clock rate of each payload type that can be received. RFC3550 section
+        /// 6.4.1 measures interarrival jitter in the units of the received packets' RTP
+        /// timestamps, and the two parties to a call do not have to send the same codec. For
+        /// example one party can send Opus, with a 48kHz RTP clock, while the other sends G722,
+        /// with an 8kHz RTP clock. The arrival time of each received packet is therefore measured
+        /// at the clock rate of that packet's payload type.
+        /// </summary>
+        /// <param name="clockRates">The RTP clock rate for each payload ID. Payload types that
+        /// are not the stream's media clock, such as telephone events, should be left out.
+        /// Packets with a payload type not in the map are measured at the clock rate of the
+        /// previous packet, or <see cref="PayloadSampleRateHz"/> if there has not been one.</param>
+        public void SetReceivePayloadClockRates(IDictionary<int, int> clockRates)
+        {
+            m_receivePayloadClockRates = clockRates == null
+                ? new Dictionary<int, int>()
+                : clockRates.Where(entry => entry.Value > 0).ToDictionary(entry => entry.Key, entry => entry.Value);
+        }
+
+        /// <summary>
+        /// Records an RTP packet received at a specific time. Split out so the arrival time can
+        /// be controlled by tests.
+        /// </summary>
+        internal void RecordRtpPacketReceived(RTPPacket rtpPacket, DateTime arrivalTime)
+        {
             LastActivityAt = DateTime.Now;
             IsTimedOut = false;
             PacketsReceivedCount++;
@@ -258,8 +311,36 @@ namespace SIPSorcery.Net
                 m_receptionReport = new ReceptionReport(rtpPacket.Header.SyncSource);
             }
 
-            var arrivalTimestamp = PayloadSampleRateHz == 0 ? DateTimeToNtpTimestamp32(DateTime.Now) : SecondsToRtpUnits((DateTime.Now - CreatedAt).TotalSeconds);
+            var clockRate = GetReceiveClockRate(rtpPacket.Header.PayloadType);
+
+            if (clockRate != m_receiveClockRate)
+            {
+                // The arrival times are about to be measured in different units to the previous
+                // packet's, and the RTP timestamps will usually change units too, so the previous
+                // packet's transit time cannot be compared with this one's.
+                m_receptionReport.ResetJitterTransit();
+                m_receiveClockRate = clockRate;
+            }
+
+            var arrivalTimestamp = clockRate == 0 ? DateTimeToNtpTimestamp32(arrivalTime) : SecondsToRtpUnits((arrivalTime - CreatedAt).TotalSeconds, clockRate);
             m_receptionReport.RtpPacketReceived(rtpPacket.Header.SequenceNumber, rtpPacket.Header.Timestamp, arrivalTimestamp);
+        }
+
+        /// <summary>
+        /// Gets the RTP clock rate to measure a received packet's arrival time at.
+        /// </summary>
+        /// <param name="payloadType">The payload type of the received packet.</param>
+        /// <returns>The RTP clock rate, or zero if none is known.</returns>
+        private int GetReceiveClockRate(int payloadType)
+        {
+            if (m_receivePayloadClockRates.TryGetValue(payloadType, out var clockRate))
+            {
+                return clockRate;
+            }
+
+            // A payload type without its own media clock, such as a telephone event, stays on
+            // the clock of the media it is interleaved with rather than resetting the jitter.
+            return m_receiveClockRate > 0 ? m_receiveClockRate : Math.Max(PayloadSampleRateHz, 0);
         }
 
         /// <summary>
@@ -283,16 +364,58 @@ namespace SIPSorcery.Net
         /// </summary>
         public void RecordRtpPacketSend(RTPPacket rtpPacket)
         {
+            RecordRtpPacketSend(rtpPacket.Header.SequenceNumber, rtpPacket.Header.Timestamp, rtpPacket.GetPayloadLength());
+        }
+
+        /// <summary>
+        /// Records an RTP packet having been sent, from the header fields and payload length the statistics need, for
+        /// senders that build the packet straight into its wire buffer without an <see cref="RTPPacket"/>.
+        /// </summary>
+        internal void RecordRtpPacketSend(ushort sequenceNumber, uint timestamp, uint payloadLength)
+        {
             if(StartedAt == DateTime.MinValue)
             {
                 Start();
             }
 
-            PacketsSentCount++;
-            OctetsSentCount += rtpPacket.GetPayloadLength();
-            LastSeqNum = rtpPacket.Header.SequenceNumber;
-            LastRtpTimestampSent = rtpPacket.Header.Timestamp;
+            lock (m_sentCountsLock)
+            {
+                PacketsSentCount++;
+                OctetsSentCount += payloadLength;
+            }
+
+            LastSeqNum = sequenceNumber;
+            LastRtpTimestampSent = timestamp;
             LastNtpTimestampSent = DateTimeToNtpTimestamp(DateTime.Now);
+        }
+
+        /// <summary>
+        /// Records an RTP packet having been sent again. It counts towards the sender report totals but, being
+        /// older, does not change the RTP timestamp sender reports pair with the current time.
+        /// </summary>
+        internal void RecordRtpPacketResend(uint payloadLength)
+        {
+            lock (m_sentCountsLock)
+            {
+                PacketsSentCount++;
+                OctetsSentCount += payloadLength;
+            }
+        }
+
+        /// <summary>
+        /// Updates the round trip time from a reception report the remote party sent about our packets
+        /// (RFC 3550 section 6.4.1). Reports about other SSRCs, or that echo no sender report, are ignored.
+        /// </summary>
+        internal void UpdateRoundTripTime(ReceptionReportSample receptionReport)
+        {
+            if (receptionReport.SSRC == Ssrc && receptionReport.LastSenderReportTimestamp != 0)
+            {
+                int roundTrip = unchecked((int)(DateTimeToNtpTimestamp32(DateTime.Now) - receptionReport.LastSenderReportTimestamp - receptionReport.DelaySinceLastSenderReport));
+                if (roundTrip >= 0)
+                {
+                    RoundTripTime = TimeSpan.FromSeconds(roundTrip / NTP_TIMESTAMP32_UNITS_PER_SECOND);
+                }
+            }
         }
 
         /// <summary>
@@ -357,7 +480,7 @@ namespace SIPSorcery.Net
                     lock (m_rtcpReportTimer)
                     {
                         if ((LastActivityAt != DateTime.MinValue && DateTime.Now.Subtract(LastActivityAt).TotalMilliseconds > NoActivityTimeoutMilliseconds) ||
-                            (LastActivityAt == DateTime.MinValue && DateTime.Now.Subtract(CreatedAt).TotalMilliseconds > NoActivityTimeoutMilliseconds))
+                            (LastActivityAt == DateTime.MinValue && DateTime.Now.Subtract(StartedAt).TotalMilliseconds > NoActivityTimeoutMilliseconds))
                         {
                             if (!IsTimedOut)
                             {
@@ -483,14 +606,20 @@ namespace SIPSorcery.Net
         /// reduction has to happen before the conversion rather than after it. Zero is returned
         /// for anything that is not a positive number of seconds, NaN included, so that the
         /// conversion below is only ever reached with a value it is defined for.</returns>
-        private uint SecondsToRtpUnits(double seconds)
+        private uint SecondsToRtpUnits(double seconds) => SecondsToRtpUnits(seconds, PayloadSampleRateHz);
+
+        /// <summary>
+        /// Converts a number of seconds to RTP timestamp units at the given RTP clock rate, see
+        /// <see cref="SecondsToRtpUnits(double)"/>.
+        /// </summary>
+        private static uint SecondsToRtpUnits(double seconds, int clockRate)
         {
             if (double.IsNaN(seconds) || seconds <= 0)
             {
                 return 0;
             }
 
-            return (uint)(long)((seconds * PayloadSampleRateHz) % 4294967296.0);
+            return (uint)(long)((seconds * clockRate) % 4294967296.0);
         }
 
         /// <summary>

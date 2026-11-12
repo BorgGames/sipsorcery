@@ -4,7 +4,7 @@ using UnityEngine;
 namespace SipSorcery.Tests.EditorScripts
 {
     /// <summary>
-    /// SIPSorcery's netstandard2.1 publish output drops a few managed
+    /// SIPSorcery's netstandard2.0 publish output drops a few managed
     /// assemblies into Assets/Plugins that carry platform-conditional
     /// references (historically Makaretu.Dns.Multicast -> Tmds.LibC, which is
     /// Linux-only). Unity's plugin importer rejects the whole assembly when

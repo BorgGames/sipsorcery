@@ -57,7 +57,7 @@ jobs:
           mkdir -p staging "$PLUGINS_DIR"
           dotnet publish src/SIPSorcery/SIPSorcery.csproj \
             --configuration Release \
-            --framework netstandard2.1 \
+            --framework netstandard2.0 \
             --output staging
           unity_provided=(
             Microsoft.CSharp.dll

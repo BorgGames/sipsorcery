@@ -43,14 +43,14 @@ test/Unity/SipSorceryUnitySmokeTest/
 ## How the CI workflow runs
 
 1. `dotnet publish` builds `src/SIPSorcery/SIPSorcery.csproj` for
-   `netstandard2.1` and copies the DLLs into `Assets/Plugins/`. A small
+   `netstandard2.0` and copies the DLLs into `Assets/Plugins/`. A small
    block-list filters out assemblies Unity already provides as built-in
    references (e.g. `Microsoft.CSharp.dll` — leaving it causes CS1703).
 2. An inline shell step generates a `.dll.meta` file for every staged
    plugin. The `.meta` sets `validateReferences: 0` and enables the
    plugin on the Editor platform. Without this, Unity's plugin importer
    rejects assemblies whose transitive references can't be resolved
-   (for example platform-conditional references that a `netstandard2.1`
+   (for example platform-conditional references that a `netstandard2.0`
    publish on Windows does not include), and refuses to load SIPSorcery
    itself.
 3. Unity is installed and activated, then run in `-batchmode -runTests`
@@ -66,7 +66,7 @@ test/Unity/SipSorceryUnitySmokeTest/
 2. From the repo root, stage the DLLs:
    ```bash
    dotnet publish src/SIPSorcery/SIPSorcery.csproj \
-     -c Release -f netstandard2.1 \
+     -c Release -f netstandard2.0 \
      -o test/Unity/SipSorceryUnitySmokeTest/Assets/Plugins
    rm test/Unity/SipSorceryUnitySmokeTest/Assets/Plugins/Microsoft.CSharp.dll
    ```

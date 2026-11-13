@@ -27,9 +27,10 @@ internal sealed class RtpPacketResendBuffer
     internal const int CAPACITY = 1024;
 
     /// <summary>
-    /// Packets sent longer ago than this are not sent again.
+    /// Packets sent longer ago than this are not sent again. libwebrtc keeps them as long until its history fills up:
+    /// once queues build up, a NACK can take a second to arrive.
     /// </summary>
-    internal static readonly TimeSpan MaxAge = TimeSpan.FromSeconds(1);
+    internal static readonly TimeSpan MaxAge = TimeSpan.FromSeconds(3);
 
     internal enum ClaimResult
     {

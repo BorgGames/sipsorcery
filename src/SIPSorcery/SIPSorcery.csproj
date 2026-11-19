@@ -69,7 +69,8 @@
     <RepositoryBranch>borg/master</RepositoryBranch>
     <PolyArgumentExceptions>true</PolyArgumentExceptions>
     <PackageTags>SIP WebRTC VoIP RTP SDP STUN ICE SIPSorcery</PackageTags>
-    <PackageReleaseNotes>-v10.0.18-pre: Bug fixes. New video Forward Error Correction (FEC) RFC2198 and RFC5109, new SIP Real-time Text (RTT) RFC4103 experimental features. 
+    <PackageReleaseNotes>-v10.0.19-pre: Numerous SIP improvements and bug fixes.
+-v10.0.18-pre: Bug fixes. New video Forward Error Correction (FEC) RFC2198 and RFC5109, new SIP Real-time Text (RTT) RFC4103 experimental features. 
 -v10.0.17: Bug fixes, mainly in SIP stack.
 -v10.0.16: The SIP TLS channel now defaults to validating remote certificates. This is a BREAKING change if you use self signed certificates and you will neeed to explicitly set the bypass valdiation property on the channel to true.
 -v10.0.15: Vulnerabiliy fixes for GHSA-jwjp-4649-v8jp, GHSA-pfvm-w89x-94jw and GHSA-mwf8-6m4x-pgmm. TurnServer marked experimental (diagnostic SIPSORCERY001); it is intended for development and testing, not production. Suppress the diagnostic to continue using it.

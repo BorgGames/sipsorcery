@@ -220,7 +220,7 @@ namespace SIPSorcery.Net
         private const string SDP_DATACHANNEL_FORMAT_ID = "webrtc-datachannel";
         private const string RTCP_MUX_ATTRIBUTE = "a=rtcp-mux";    // Indicates the media announcement is using multiplexed RTCP.
         private const string BUNDLE_ATTRIBUTE = "BUNDLE";
-        private const string ICE_OPTIONS = "ice2,trickle";          // Supported ICE options.
+        private const string ICE_OPTIONS = "ice2 trickle";          // Supported ICE options, space separated (RFC 8839 5.6).
         private const string NORMAL_CLOSE_REASON = "normal";
         private const ushort SCTP_DEFAULT_PORT = 5000;
 
@@ -233,7 +233,6 @@ namespace SIPSorcery.Net
         private const int SCTP_ASSOCIATE_TIMEOUT_SECONDS = 2;
 
         private new readonly string RTP_MEDIA_PROFILE = RTP_MEDIA_NON_FEEDBACK_PROFILE;
-        private readonly string RTCP_ATTRIBUTE = $"a=rtcp:{SDP.IGNORE_RTP_PORT_NUMBER} IN IP4 0.0.0.0";
 
         public string SessionID { get; private set; }
         public string SdpSessionID { get; private set; }
@@ -444,6 +443,43 @@ namespace SIPSorcery.Net
         /// suitable for media packets can be exchanged.
         /// </summary>
         public event Action<RTCPeerConnectionState> onconnectionstatechange;
+
+        /// <summary>
+        /// Fires when the DTLS transport changes state: connecting as the handshake starts (ICE has connected),
+        /// then connected, failed or closed. The info says our role, the SRTP protection profile agreed, and why
+        /// it failed: the handshake's error, its last alert, or both fingerprints when the remote certificate
+        /// didn't match their SDP. <see cref="onconnectionstatechange"/> says failed for an ICE failure as well;
+        /// this one is only DTLS's.
+        /// </summary>
+        public event Action<RTCDtlsTransportInfo> ondtlsstatechange;
+
+        /// <summary>
+        /// The DTLS transport's state, and what's known about it (see <see cref="ondtlsstatechange"/>).
+        /// </summary>
+        public RTCDtlsTransportInfo DtlsTransportInfo { get; private set; } = new RTCDtlsTransportInfo(RTCDtlsTransportState.@new, false);
+
+        /// <summary>The DTLS transport's state.</summary>
+        public RTCDtlsTransportState dtlsState => DtlsTransportInfo.State;
+
+        private void SetDtlsState(DtlsSrtpTransport dtlsHandle, RTCDtlsTransportState state, string reason = null, string remoteFingerprint = null)
+        {
+            var info = new RTCDtlsTransportInfo(state,
+                dtlsHandle?.IsClient ?? IceRole == IceRolesEnum.active,
+                dtlsHandle?.SrtpProtectionProfileName,
+                reason,
+                dtlsHandle?.LastAlert,
+                RemotePeerDtlsFingerprint?.ToString(),
+                remoteFingerprint);
+            DtlsTransportInfo = info;
+            try
+            {
+                ondtlsstatechange?.Invoke(info);
+            }
+            catch (Exception excp)
+            {
+                logger.LogWarning(excp, "Exception in an ondtlsstatechange handler. {ErrorMessage}", excp.Message);
+            }
+        }
 
         /// <summary>
         /// Fires when a new data channel is created by the remote peer.
@@ -698,6 +734,7 @@ namespace SIPSorcery.Net
                     }
 
                     logger.LogDebug("Starting DTLS handshake with role {IceRole}.", IceRole);
+                    SetDtlsState(dtlsHandle, RTCDtlsTransportState.connecting);
 
                     try
                     {
@@ -719,6 +756,10 @@ namespace SIPSorcery.Net
                     catch (Exception excp)
                     {
                         logger.LogWarning(excp, "RTCPeerConnection DTLS handshake failed. {ErrorMessage}", excp.Message);
+                        if (dtlsState == RTCDtlsTransportState.connecting)
+                        {
+                            SetDtlsState(dtlsHandle, RTCDtlsTransportState.failed, excp.Message);
+                        }
 
                         //connectionState = RTCPeerConnectionState.failed;
                         //onconnectionstatechange?.Invoke(connectionState);
@@ -982,11 +1023,22 @@ namespace SIPSorcery.Net
 
                 // All browsers seem to have gone to trickling ICE candidates now but just
                 // in case one or more are given we can start the STUN dance immediately.
+                // The same candidate can be on more than one m= section (all of them bundled on the
+                // one transport, as SIPSorcery's own offers have it), so each is added once.
+                var remoteCandidatesAdded = new HashSet<string>(StringComparer.Ordinal);
+                void addRemoteSdpCandidate(string iceCandidate)
+                {
+                    if (remoteCandidatesAdded.Add(iceCandidate?.Trim() ?? string.Empty))
+                    {
+                        addIceCandidate(new RTCIceCandidateInit { candidate = iceCandidate });
+                    }
+                }
+
                 if (remoteSdp.IceCandidates != null)
                 {
                     foreach (var iceCandidate in remoteSdp.IceCandidates)
                     {
-                        addIceCandidate(new RTCIceCandidateInit { candidate = iceCandidate });
+                        addRemoteSdpCandidate(iceCandidate);
                     }
                 }
 
@@ -997,7 +1049,7 @@ namespace SIPSorcery.Net
                     {
                         foreach (var iceCandidate in media.IceCandidates)
                         {
-                            addIceCandidate(new RTCIceCandidateInit { candidate = iceCandidate });
+                            addRemoteSdpCandidate(iceCandidate);
                         }
                     }
 
@@ -1114,6 +1166,12 @@ namespace SIPSorcery.Net
 
                 _rtpIceChannel?.Close();
                 _dtlsHandle?.Close();
+
+                // A transport that got going closes with the connection; one that failed stays failed.
+                if (dtlsState == RTCDtlsTransportState.connecting || dtlsState == RTCDtlsTransportState.connected)
+                {
+                    SetDtlsState(_dtlsHandle, RTCDtlsTransportState.closed, reason, DtlsTransportInfo.RemoteFingerprint);
+                }
 
                 sctp?.Close();
 
@@ -1324,12 +1382,31 @@ namespace SIPSorcery.Net
             else
             {
                 List<MediaStream> mediaStreamList = GetMediaStreams();
-                //Revert to DefaultStreamStatus
                 foreach (var mediaStream in mediaStreamList)
                 {
-                    if (mediaStream.LocalTrack != null && mediaStream.LocalTrack.StreamStatus == MediaStreamStatusEnum.Inactive)
+                    var localTrack = mediaStream.LocalTrack;
+                    if (localTrack == null)
                     {
-                        mediaStream.LocalTrack.StreamStatus = mediaStream.LocalTrack.DefaultStreamStatus;
+                        continue;
+                    }
+
+                    // An m-line bundled onto another one's transport can have port 0 (bundle-only) or
+                    // no address of its own, which leaves the track inactive: put it back.
+                    if (localTrack.StreamStatus == MediaStreamStatusEnum.Inactive)
+                    {
+                        localTrack.RestoreStreamStatusBeforeAnswer();
+                        if (localTrack.StreamStatus == MediaStreamStatusEnum.Inactive)
+                        {
+                            localTrack.StreamStatus = localTrack.DefaultStreamStatus;
+                        }
+                    }
+
+                    // Then the offer's direction: a sendonly offer is answered recvonly, a recvonly
+                    // offer sendonly and an inactive one inactive (RFC 3264 section 6.1, JSEP 5.3.1).
+                    if (mediaStream.RemoteTrack != null && remoteDescription.type == RTCSdpType.offer)
+                    {
+                        localTrack.NarrowStreamStatusForAnswer(
+                            MediaStreamStatusType.GetAnswerMediaStreamStatus(mediaStream.RemoteTrack.StreamStatus, localTrack.StreamStatus));
                     }
                 }
 
@@ -1492,6 +1569,24 @@ namespace SIPSorcery.Net
             SDP offerSdp = new SDP(IPAddress.Loopback);
             offerSdp.SessionId = LocalSdpSessionID;
 
+            // The default destination for the c= line and m= port: one of the candidates going in
+            // the SDP, as RFC 8839 4.2.1.1 has it, or with none the placeholder 0.0.0.0 (or ::) and
+            // port 9 that 4.2.5 allows for trickle ICE. All the m-lines are bundled on one ICE
+            // transport, so they all share it. A peer that checks the default against the
+            // candidates (pjsip) otherwise finds no match for the RTP component and, seeing an
+            // a=rtcp line, expects a second (RTCP) component it has no candidates for.
+            var defaultCandidate = excludeIceCandidates ? null : GetDefaultCandidate();
+            IPAddress defaultAddress = IPAddress.Any;
+            int defaultPort = SDP.IGNORE_RTP_PORT_NUMBER;
+            if (defaultCandidate != null && IPAddress.TryParse(defaultCandidate.address, out var candidateAddress))
+            {
+                defaultAddress = candidateAddress;
+                defaultPort = defaultCandidate.port;
+            }
+            // RTCP is multiplexed with RTP (a=rtcp-mux), so a=rtcp names the same address and port
+            // (RFC 5761 5.1.3).
+            string rtcpAttribute = $"a=rtcp:{defaultPort} IN {(defaultAddress.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6 ? SDPConnectionInformation.CONNECTION_ADDRESS_TYPE_IPV6 : SDPConnectionInformation.CONNECTION_ADDRESS_TYPE_IPV4)} {defaultAddress}";
+
             string dtlsFingerprint = this.DtlsCertificateFingerprint.ToString();
 
             // Local function to add ICE candidates to one of the media announcements.
@@ -1565,13 +1660,13 @@ namespace SIPSorcery.Net
                 {
                     SDPMediaAnnouncement announcement = new SDPMediaAnnouncement(
                      mediaStream.LocalTrack.Kind,
-                     SDP.IGNORE_RTP_PORT_NUMBER,
+                     defaultPort,
                      mediaStream.LocalTrack.Capabilities);
 
                     announcement.Transport = RTP_MEDIA_PROFILE;
-                    announcement.Connection = new SDPConnectionInformation(IPAddress.Any);
+                    announcement.Connection = new SDPConnectionInformation(defaultAddress);
                     announcement.AddExtra(RTCP_MUX_ATTRIBUTE);
-                    announcement.AddExtra(RTCP_ATTRIBUTE);
+                    announcement.AddExtra(rtcpAttribute);
                     announcement.MediaStreamStatus = mediaStream.LocalTrack.StreamStatus;
                     announcement.MediaID = midTag;
                     announcement.MLineIndex = mindex;
@@ -1609,10 +1704,10 @@ namespace SIPSorcery.Net
                 {
                     SDPMediaAnnouncement dataChannelAnnouncement = new SDPMediaAnnouncement(
                         SDPMediaTypesEnum.application,
-                        SDP.IGNORE_RTP_PORT_NUMBER,
+                        defaultPort,
                         new List<SDPApplicationMediaFormat> { new SDPApplicationMediaFormat(SDP_DATACHANNEL_FORMAT_ID) });
                     dataChannelAnnouncement.Transport = RTP_MEDIA_DATACHANNEL_UDPDTLS_PROFILE;
-                    dataChannelAnnouncement.Connection = new SDPConnectionInformation(IPAddress.Any);
+                    dataChannelAnnouncement.Connection = new SDPConnectionInformation(defaultAddress);
 
                     dataChannelAnnouncement.SctpPort = SCTP_DEFAULT_PORT;
                     dataChannelAnnouncement.MaxMessageSize = sctp.maxMessageSize;
@@ -1645,13 +1740,53 @@ namespace SIPSorcery.Net
                 // stream list is always ordered audio, video, text) so the candidates have to be
                 // placed on the BUNDLE-tag announcement rather than the first announcement that
                 // happens to get generated (issue #1763).
+                //
+                // An answer to a BUNDLE offer has them there only. An offer, or an answer to an
+                // offer without BUNDLE, has them on every m= section: they all share the one
+                // transport, and a peer that doesn't do BUNDLE (pjsip) reads each m= section on
+                // its own. With no candidates, the section's default (its c= and a=rtcp, the
+                // same transport) matches nothing, and pjsip, seeing a=rtcp, expects a second
+                // (RTCP) component and fails the call with "406 Failed creating media transport".
+                // A BUNDLE peer ignores the copies (RFC 8843 7.1.3), and setRemoteDescription
+                // drops the repeated candidates when SIPSorcery gets them.
                 if (!excludeIceCandidates)
                 {
-                    AddIceCandidates(bundledAnnouncements[0]);
+                    bool remoteBundled = RemoteDescription?.Group?.StartsWith(BUNDLE_ATTRIBUTE) == true;
+                    if (RemoteDescription == null || !remoteBundled)
+                    {
+                        bundledAnnouncements.ForEach(AddIceCandidates);
+                    }
+                    else
+                    {
+                        AddIceCandidates(bundledAnnouncements[0]);
+                    }
                 }
             }
 
             return offerSdp;
+        }
+
+        /// <summary>
+        /// The candidate to use as the SDP's default destination (c= line and m= port): of the RTP
+        /// component candidates that go in the SDP and have an IP address (not an mDNS name), the
+        /// one most likely to work from anywhere, as RFC 8445 5.1.4 suggests: relayed, then server
+        /// reflexive, then host, IPv4 before IPv6, then by priority. Null if there are none.
+        /// </summary>
+        private RTCIceCandidate GetDefaultCandidate()
+        {
+            var candidates = (_rtpIceChannel.Candidates ?? new List<RTCIceCandidate>()).Concat(_applicationIceCandidates);
+
+            int typeRank(RTCIceCandidateType type) =>
+                type == RTCIceCandidateType.relay ? 0 :
+                type == RTCIceCandidateType.srflx ? 1 :
+                type == RTCIceCandidateType.prflx ? 2 : 3;
+
+            return candidates
+                .Where(c => c != null && c.component == RTCIceComponent.rtp && IPAddress.TryParse(c.address, out _))
+                .OrderBy(c => typeRank(c.type))
+                .ThenBy(c => IPAddress.Parse(c.address).AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork ? 0 : 1)
+                .ThenByDescending(c => c.priority)
+                .FirstOrDefault();
         }
 
         /// <summary>
@@ -2143,6 +2278,7 @@ namespace SIPSorcery.Net
             {
                 handshakeError = handshakeError ?? "unknown";
                 logger.LogWarning("RTCPeerConnection DTLS handshake failed with error {HandshakeError}.", handshakeError);
+                SetDtlsState(dtlsHandle, RTCDtlsTransportState.failed, handshakeError);
                 Close("dtls handshake failed");
                 return false;
             }
@@ -2157,6 +2293,7 @@ namespace SIPSorcery.Net
                 if (!string.Equals(remoteFingerprint.value, expectedFp.value, StringComparison.OrdinalIgnoreCase))
                 {
                     logger.LogWarning("RTCPeerConnection remote certificate fingerprint mismatch, expected {ExpectedFingerprint}, actual {RemoteFingerprint}.", expectedFp, remoteFingerprint);
+                    SetDtlsState(dtlsHandle, RTCDtlsTransportState.failed, "fingerprint mismatch", remoteFingerprint.ToString());
                     Close("dtls fingerprint mismatch");
                     return false;
                 }
@@ -2171,6 +2308,7 @@ namespace SIPSorcery.Net
 
                         
                     IsDtlsNegotiationComplete = true;
+                    SetDtlsState(dtlsHandle, RTCDtlsTransportState.connected, null, remoteFingerprint.ToString());
 
                     return true;
                 }

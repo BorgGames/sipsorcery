@@ -11,6 +11,7 @@
 //
 // History:
 // 30 Aug 2026  Aaron Clauson   Created.
+// 17 Nov 2026  Claude Code - Opus 5.5   A transferee's call to the target turned down leaves the original call up.
 //
 // License:
 // BSD 3-Clause "New" or "Revised" License, see included LICENSE.md file.
@@ -468,6 +469,201 @@ namespace SIPSorcery.SIP.App.UnitTests
 
                 Assert.Contains(responses, x => x.StartsWith("SIP/2.0 481"));
                 Assert.DoesNotContain(responses, x => x.StartsWith("SIP/2.0 202"));
+            }
+            finally
+            {
+                agent.Close();
+                transport.Shutdown();
+            }
+        }
+
+        /// <summary>
+        /// Checks whether the agent has sent an INVITE to the transfer destination used by the tests below.
+        /// </summary>
+        private static bool SentInviteToTarget(RecordingMockSIPChannel channel) =>
+            channel.AllSentMessages.Any(x => x.StartsWith("INVITE sip:transfer-target@127.0.0.1:6099"));
+
+        /// <summary>
+        /// Verifies that with a confirmation handler the REFER request is accepted straight away, and that the
+        /// transfer destination is not called while the confirmation is pending or once it's declined.
+        /// </summary>
+        [Fact]
+        public async Task TransferConfirmDeclinedNotCarriedOut()
+        {
+            logger.LogDebug("--> {MethodName}", TestHelper.GetCurrentMethodName());
+
+            var channelEndPoint = new IPEndPoint(IPAddress.Loopback, 6094);
+            var channel = new RecordingMockSIPChannel(channelEndPoint);
+            var transport = new SIPTransport();
+            transport.AddSIPChannel(channel);
+
+            var agent = new SIPUserAgent(transport, null);
+            var decision = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            string askedReferTo = null;
+
+            try
+            {
+                await EstablishDialogAsync(agent, channel, channelEndPoint);
+
+                agent.OnTransferRequested += (referTo, referredBy) => true;
+                agent.OnTransferConfirmAsync += (referTo, referredBy) =>
+                {
+                    askedReferTo = referTo.URI.ToString();
+                    return decision.Task;
+                };
+
+                var referRequest = CreateReferRequest(agent.Dialogue, channelEndPoint, "<sip:transfer-target@127.0.0.1:6099>");
+                var responses = await InjectRequestAsync(channel, channelEndPoint, referRequest);
+
+                Assert.Contains(responses, x => x.StartsWith("SIP/2.0 202"));
+                Assert.Equal("sip:transfer-target@127.0.0.1:6099", askedReferTo);
+                Assert.False(SentInviteToTarget(channel), "The transfer destination was called before the transfer was confirmed.");
+
+                decision.SetResult(false);
+                await Task.Delay(500);
+
+                Assert.False(SentInviteToTarget(channel), "The transfer destination was called after the transfer was declined.");
+            }
+            finally
+            {
+                agent.Close();
+                transport.Shutdown();
+            }
+        }
+
+        /// <summary>
+        /// Verifies that a transfer confirmed by the confirmation handler goes ahead and calls the transfer destination.
+        /// </summary>
+        [Fact]
+        public async Task TransferConfirmedCallsDestination()
+        {
+            logger.LogDebug("--> {MethodName}", TestHelper.GetCurrentMethodName());
+
+            var channelEndPoint = new IPEndPoint(IPAddress.Loopback, 6095);
+            var channel = new RecordingMockSIPChannel(channelEndPoint);
+            var transport = new SIPTransport();
+            transport.AddSIPChannel(channel);
+
+            var agent = new SIPUserAgent(transport, null);
+
+            try
+            {
+                await EstablishDialogAsync(agent, channel, channelEndPoint);
+
+                agent.OnTransferRequested += (referTo, referredBy) => true;
+                agent.OnTransferConfirmAsync += async (referTo, referredBy) =>
+                {
+                    await Task.Delay(200);
+                    return true;
+                };
+
+                var referRequest = CreateReferRequest(agent.Dialogue, channelEndPoint, "<sip:transfer-target@127.0.0.1:6099>");
+                var responses = await InjectRequestAsync(channel, channelEndPoint, referRequest);
+
+                Assert.Contains(responses, x => x.StartsWith("SIP/2.0 202"));
+                Assert.True(SentInviteToTarget(channel), "The transfer destination was not called once the transfer was confirmed.");
+            }
+            finally
+            {
+                agent.Close();
+                transport.Shutdown();
+            }
+        }
+
+        /// <summary>
+        /// Verifies that a transfer confirmed after its call has ended is dropped rather than carried out.
+        /// </summary>
+        [Fact]
+        public async Task TransferConfirmedAfterCallEndedDropped()
+        {
+            logger.LogDebug("--> {MethodName}", TestHelper.GetCurrentMethodName());
+
+            var channelEndPoint = new IPEndPoint(IPAddress.Loopback, 6096);
+            var channel = new RecordingMockSIPChannel(channelEndPoint);
+            var transport = new SIPTransport();
+            transport.AddSIPChannel(channel);
+
+            var agent = new SIPUserAgent(transport, null);
+            var decision = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            try
+            {
+                await EstablishDialogAsync(agent, channel, channelEndPoint);
+
+                agent.OnTransferRequested += (referTo, referredBy) => true;
+                agent.OnTransferConfirmAsync += (referTo, referredBy) => decision.Task;
+
+                var referRequest = CreateReferRequest(agent.Dialogue, channelEndPoint, "<sip:transfer-target@127.0.0.1:6099>");
+                var responses = await InjectRequestAsync(channel, channelEndPoint, referRequest);
+                Assert.Contains(responses, x => x.StartsWith("SIP/2.0 202"));
+
+                agent.Dialogue.DialogueState = SIPDialogueStateEnum.Terminated;
+                decision.SetResult(true);
+                await Task.Delay(500);
+
+                Assert.False(SentInviteToTarget(channel), "The transfer destination was called after the call had ended.");
+            }
+            finally
+            {
+                agent.Close();
+                transport.Shutdown();
+            }
+        }
+
+
+        /// <summary>
+        /// Verifies that when the transfer destination turns the call down (a 488, say) the call being
+        /// transferred goes on: it isn't reported hung up, its media stays open and its dialog stays, and
+        /// it's taken off hold. (It used to be ended as if the remote party had hung up, without a BYE,
+        /// and the response to the re-INVITE taking it off hold then hit a null dialog.)
+        /// </summary>
+        [Fact]
+        public async Task TransferToTargetRefusedOriginalCallGoesOn()
+        {
+            logger.LogDebug("--> {MethodName}", TestHelper.GetCurrentMethodName());
+
+            var channelEndPoint = new IPEndPoint(IPAddress.Loopback, 6097);
+            var channel = new RecordingMockSIPChannel(channelEndPoint);
+            var transport = new SIPTransport();
+            transport.AddSIPChannel(channel);
+
+            var agent = new SIPUserAgent(transport, null);
+            bool hungup = false;
+            var failed = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            try
+            {
+                var mediaSession = await EstablishDialogAsync(agent, channel, channelEndPoint);
+                string originalCallId = agent.Dialogue.CallId;
+
+                agent.OnCallHungup += _ => hungup = true;
+                agent.OnTransferRequested += (referTo, referredBy) => true;
+                agent.OnTransferToTargetFailed += _ => failed.TrySetResult(true);
+
+                var referRequest = CreateReferRequest(agent.Dialogue, channelEndPoint, "<sip:transfer-target@127.0.0.1:6099>");
+                var responses = await InjectRequestAsync(channel, channelEndPoint, referRequest);
+                Assert.Contains(responses, x => x.StartsWith("SIP/2.0 202"));
+
+                string inviteStr = channel.AllSentMessages.FirstOrDefault(x => x.StartsWith("INVITE sip:transfer-target@127.0.0.1:6099"));
+                Assert.False(inviteStr == null, "The transfer destination was not called.");
+                var invite = SIPRequest.ParseSIPRequest(SIPMessageBuffer.ParseSIPMessage(inviteStr, DummySIPEndPoint, DummySIPEndPoint));
+
+                var refused = SIPResponse.GetResponse(invite, SIPResponseStatusCodesEnum.NotAcceptableHere, null);
+                refused.Header.To.ToTag = CallProperties.CreateNewTag();
+                channel.FireMessageReceived(new SIPEndPoint(SIPProtocolsEnum.udp, channelEndPoint), DummySIPEndPoint, Encoding.UTF8.GetBytes(refused.ToString()));
+
+                await Task.WhenAny(failed.Task, Task.Delay(5000));
+                Assert.True(failed.Task.IsCompleted, "OnTransferToTargetFailed did not fire.");
+                await Task.Delay(500);
+
+                Assert.False(hungup, "The original call was reported hung up.");
+                Assert.NotNull(agent.Dialogue);
+                Assert.Equal(originalCallId, agent.Dialogue.CallId);
+                Assert.False(mediaSession.IsClosed, "The original call's media was closed.");
+                // Put on hold as the transfer started, and taken off it again.
+                Assert.True(channel.AllSentMessages.Count(x => x.StartsWith("INVITE ") && x.Contains($"Call-ID: {originalCallId}")) >= 2,
+                    "The original call wasn't taken off hold.");
+                Assert.DoesNotContain(channel.AllSentMessages, x => x.StartsWith("BYE "));
             }
             finally
             {

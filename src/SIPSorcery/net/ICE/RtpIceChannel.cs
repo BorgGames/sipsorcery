@@ -285,6 +285,21 @@ namespace SIPSorcery.Net
         public ChecklistEntry NominatedEntry { get; private set; }
 
         /// <summary>
+        /// A copy of the ICE checklist as it is now: each candidate pair, its state, and the checks
+        /// each way on it. For diagnostics, such as saying which of the remote peer's candidates
+        /// answered and which never did when ICE fails. The pairs are copied under the checklist's
+        /// lock, so the list does not change as it is read; it is empty once the channel is closed.
+        /// </summary>
+        /// <returns>The candidate pairs, in the checklist's priority order.</returns>
+        public IReadOnlyList<IceCandidatePairStats> GetChecklistSnapshot()
+        {
+            lock (_checklistLock)
+            {
+                return _checklist.Select(x => new IceCandidatePairStats(x, x == NominatedEntry)).ToList();
+            }
+        }
+
+        /// <summary>
         /// Retransmission timer for STUN transactions, measured in milliseconds.
         /// </summary>
         /// <remarks>
@@ -585,6 +600,14 @@ namespace SIPSorcery.Net
                 foreach (var pair in m_rtpTcpReceiverByUri)
                 {
                     CloseTcp(pair.Value, reason);
+                }
+            }
+
+            foreach (var pair in RtpTcpSocketByUri)
+            {
+                if (pair.Key.Scheme == STUNSchemesEnum.turns || pair.Key.Scheme == STUNSchemesEnum.stuns)
+                {
+                    pair.Value.Close();
                 }
             }
         }
@@ -2153,6 +2176,7 @@ namespace SIPSorcery.Net
                         }
 
                         matchingChecklistEntry.LastBindingRequestReceivedAt = DateTime.Now;
+                        matchingChecklistEntry.BindingRequestsReceived++;
 
                         STUNMessage stunResponse = new STUNMessage(STUNMessageTypesEnum.BindingSuccessResponse);
                         stunResponse.Header.TransactionId = bindingRequest.Header.TransactionId;
@@ -2652,10 +2676,7 @@ namespace SIPSorcery.Net
             finally
             {
                 _tlsStreams.TryRemove(uri, out _);
-                if (_tlsWriteLocks.TryRemove(uri, out var removedLock))
-                {
-                    removedLock.Dispose();
-                }
+                _tlsWriteLocks.TryRemove(uri, out _);
             }
         }
 

@@ -57,6 +57,19 @@ namespace SIPSorcery.Net
         protected SecureContext SecureContext;
         protected SrtpHandler SrtpHandler;
 
+        /// <summary>
+        /// Best-effort SDES only: the offer and answer settled on plain RTP for this stream (the far
+        /// end didn't take up our crypto, or offered none). Until then the stream is treated as
+        /// secure, holding back media until its keys are known.
+        /// </summary>
+        internal bool IsPlainRtpAgreed { get; private set; }
+
+        /// <summary>
+        /// Best-effort SDES only: the far end uses the RTP/SAVP profile for this stream (it offered
+        /// or answered it), so our offers keep to it rather than RTP/AVP.
+        /// </summary>
+        internal bool UsesSecureProfile { get; set; }
+
         private RTPReorderBuffer RTPReorderBuffer = null;
         private readonly object _fecReceiveLock = new object();
         private RtpFecReceiveBuffer _fecReceiveBuffer;
@@ -96,6 +109,7 @@ namespace SIPSorcery.Net
         private long _closedAtTicks = 0;                 // When the stream closed, 0 while it is open.
         private long _sendsAfterClose = 0;               // Sends dropped since the stream closed.
         private long _lastClosedSendWarningTicks = 0;    // When the last of those was reported, 0 if none has been.
+        private int _reportedUnsendableStatus = -1;      // The recvonly or inactive status a dropped send was last reported for, -1 if none.
         /// <summary>
         /// Used for keeping track of TWCC packets
         /// </summary>
@@ -307,6 +321,26 @@ namespace SIPSorcery.Net
         public event Action<int, IPEndPoint, SDPMediaTypesEnum, RTPPacket> OnRtpPacketReceivedByIndex;
 
         /// <summary>
+        /// Fires when RTP from the remote party starts arriving from an address other than the one
+        /// expected (their SDP's, or ICE's), and the stream switches to sending there: a NAT between
+        /// the parties, most likely. The parameters are the stream's index, its media type, the address
+        /// it was sending to, and the one it now sends to. Only fires for a switch the stream accepts
+        /// (see <see cref="AcceptRtpFromAny"/>); RTP from an address that's turned away is only logged.
+        /// </summary>
+        public event Action<int, SDPMediaTypesEnum, IPEndPoint, IPEndPoint> OnRtpEndPointSwitchedByIndex;
+
+        /// <summary>
+        /// The SRTP packets on this stream that couldn't be unprotected, by why (the keys differ, or a
+        /// replay). Zero for a stream without SRTP.
+        /// </summary>
+        public SrtpErrorCounts SrtpErrors { get; } = new SrtpErrorCounts();
+
+        /// <summary>
+        /// The SRTCP packets for this stream that couldn't be unprotected, by why.
+        /// </summary>
+        public SrtpErrorCounts SrtcpErrors { get; } = new SrtpErrorCounts();
+
+        /// <summary>
         /// Gets fired when an RTP Header packet is received from a remote party.
         /// Parameters are:
         ///  - index of the AudioStream or VideoStream
@@ -374,6 +408,14 @@ namespace SIPSorcery.Net
         /// be negotiated to a common payload ID. RTP events are typically DTMF tones.
         /// </summary>
         public int NegotiatedRtpEventPayloadID { get; set; } = RTPSession.DEFAULT_DTMF_EVENT_PAYLOAD_ID;
+
+        /// <summary>
+        /// The telephone-event payload ID we put in our SDP offer, when the remote party's answer
+        /// used a different one. Per RFC 3264 the answerer sends its RTP events on the payload ID
+        /// we offered, so incoming packets with this ID are treated as RTP events as well as those
+        /// with <see cref="NegotiatedRtpEventPayloadID"/>. Zero when not needed.
+        /// </summary>
+        public int OfferedRtpEventPayloadID { get; internal set; }
 
         /// <summary>
         /// To type of this media
@@ -552,6 +594,65 @@ namespace SIPSorcery.Net
             return SecureContext != null;
         }
 
+        /// <summary>
+        /// Whether this stream's media has to be SRTP: always with DTLS-SRTP or mandatory SDES, and
+        /// with best-effort SDES unless the offer and answer settled on plain RTP.
+        /// </summary>
+        public bool RequiresSecureContext
+        {
+            get => RtpSessionConfig.IsSecure || RtpSessionConfig.UseSdpCryptoNegotiation ||
+                (RtpSessionConfig.UseSdpCryptoBestEffort && !IsPlainRtpAgreed);
+        }
+
+        /// <summary>
+        /// Whether received media has to wait for this stream's SRTP keys. The session holds back
+        /// everything it receives while any stream waits, so with SDES only a stream that can
+        /// carry media does: one with a local track that isn't inactive (without one we answer the
+        /// far end's m-line with port 0, and a far end that declines ours makes it inactive), and
+        /// something to wait for, our offer with crypto or the far end's description of the stream
+        /// (not a local track the far end never offered). Otherwise, say, an audio-only session
+        /// answering an audio and video offer never received any audio. With DTLS-SRTP the keys
+        /// come from the handshake, so a stream waits as soon as it's secure.
+        /// A stream with no RTP channel of its own (not multiplexed) doesn't wait either: we
+        /// answer its m-line with port 0, so it carries nothing. It can still have a local track
+        /// that isn't inactive: one made for an m-line we declined, then set send and receive by
+        /// a later re-INVITE (the user agent sets each stream's direction from the offer). Its
+        /// wait held back the call's audio, e.g. after a far end put the call on hold with video
+        /// added, which we declined, and took it off hold again.
+        /// </summary>
+        internal bool IsAwaitingSecureContext
+        {
+            get => RequiresSecureContext && !IsSecurityContextReady() &&
+                (!RtpSessionConfig.UsesSdpCrypto ||
+                    (LocalTrack != null && LocalTrack.StreamStatus != MediaStreamStatusEnum.Inactive && (RemoteTrack != null || SrtpHandler != null) &&
+                        (RtpSessionConfig.IsMediaMultiplexed || HasRtpChannel())));
+        }
+
+        /// <summary>
+        /// Best-effort SDES: the stream's media is plain RTP, dropping any keys from before (a
+        /// re-offer without crypto on an SRTP call).
+        /// </summary>
+        internal void UsePlainRtp()
+        {
+            if (!IsPlainRtpAgreed && SecureContext != null)
+            {
+                logger.LogDebug("{MediaType} stream {Index} changing from SRTP to plain RTP.", MediaType, Index);
+            }
+            IsPlainRtpAgreed = true;
+            UsesSecureProfile = false;
+            SecureContext = null;
+            SrtpHandler = null;
+            ClearPendingPackages();
+        }
+
+        /// <summary>
+        /// Best-effort SDES: the stream's media is to be SRTP (an offer or answer with crypto).
+        /// </summary>
+        internal void UseSrtp()
+        {
+            IsPlainRtpAgreed = false;
+        }
+
         private bool UnprotectBuffer(ReadOnlySpan<byte> buffer, out RTPPacket packet)
         {
             packet = null;
@@ -571,6 +672,7 @@ namespace SIPSorcery.Net
                     }
                     else
                     {
+                        SrtpErrors.Record(res);
                         logger.LogWarning("SRTP unprotect failed for {MediaType}, result {Result}.", MediaType, res);
                     }
                 }
@@ -584,7 +686,7 @@ namespace SIPSorcery.Net
 
         public bool EnsureBufferUnprotected(ReadOnlySpan<byte> buf, RTPHeader header, out RTPPacket packet)
         {
-            if (RtpSessionConfig.IsSecure || RtpSessionConfig.UseSdpCryptoNegotiation)
+            if (RequiresSecureContext)
             {
                 if (!UnprotectBuffer(buf, out packet))
                 {
@@ -637,13 +739,26 @@ namespace SIPSorcery.Net
                 return false;
             }
 
-            if ((LocalTrack.StreamStatus == MediaStreamStatusEnum.RecvOnly) || (LocalTrack.StreamStatus == MediaStreamStatusEnum.Inactive))
+            var streamStatus = LocalTrack.StreamStatus;
+            if ((streamStatus == MediaStreamStatusEnum.RecvOnly) || (streamStatus == MediaStreamStatusEnum.Inactive))
             {
-                logger.LogWarning("SendRtpRaw was called for a {MediaType} packet on an RTP session with a Stream Status set to {StreamStatus}", MediaType, LocalTrack.StreamStatus);
+                // Reported once for each time the track stops sending, not for every frame: an
+                // application that goes on sending to a call answered recvonly, or a call on hold,
+                // would otherwise fill the log at the media frame rate.
+                if (_reportedUnsendableStatus != (int)streamStatus)
+                {
+                    _reportedUnsendableStatus = (int)streamStatus;
+                    logger.LogWarning("SendRtpRaw was called for a {MediaType} packet on an RTP session with a Stream Status set to {StreamStatus}. Sends are dropped, without logging again, until it changes.", MediaType, streamStatus);
+                }
                 return false;
             }
 
-            if ((RtpSessionConfig.IsSecure || RtpSessionConfig.UseSdpCryptoNegotiation) && SecureContext?.ProtectRtpPacket == null)
+            if (_reportedUnsendableStatus != -1)
+            {
+                _reportedUnsendableStatus = -1;
+            }
+
+            if (RequiresSecureContext && SecureContext?.ProtectRtpPacket == null)
             {
                 logger.LogWarning("SendRtpPacket cannot be called on a secure session before calling SetSecurityContext.");
                 return false;
@@ -1221,7 +1336,7 @@ namespace SIPSorcery.Net
         /// <returns>True if report was sent</returns>
         private bool SendRtcpReport(byte[] reportBuffer)
         {
-            if ((RtpSessionConfig.IsSecure || RtpSessionConfig.UseSdpCryptoNegotiation) && !IsSecurityContextReady())
+            if (RequiresSecureContext && !IsSecurityContextReady())
             {
                 logger.LogWarning("SendRtcpReport cannot be called on a secure session before calling SetSecurityContext.");
                 return false;
@@ -1275,7 +1390,7 @@ namespace SIPSorcery.Net
         /// <param name="report">RTCP report to send.</param>
         public void SendRtcpReport(RTCPCompoundPacket report)
         {
-            if ((RtpSessionConfig.IsSecure || RtpSessionConfig.UseSdpCryptoNegotiation) && !IsSecurityContextReady() && report.Bye != null)
+            if (RequiresSecureContext && !IsSecurityContextReady() && report.Bye != null)
             {
                 // Do nothing. The RTCP BYE gets generated when an RTP session is closed.
                 // If that occurs before the connection was able to set up the secure context
@@ -1312,7 +1427,9 @@ namespace SIPSorcery.Net
         public void OnReceiveRTPPacket(RTPHeader hdr, int localPort, IPEndPoint remoteEndPoint, ReadOnlySpan<byte> buffer)
         {
             RTPPacket rtpPacket;
-            if (MediaType == SDPMediaTypesEnum.audio && NegotiatedRtpEventPayloadID != 0 && hdr.PayloadType == NegotiatedRtpEventPayloadID)
+            if (MediaType == SDPMediaTypesEnum.audio &&
+                ((NegotiatedRtpEventPayloadID != 0 && hdr.PayloadType == NegotiatedRtpEventPayloadID) ||
+                 (OfferedRtpEventPayloadID != 0 && hdr.PayloadType == OfferedRtpEventPayloadID)))
             {
                 if (!EnsureBufferUnprotected(buffer, hdr, out rtpPacket))
                 {
@@ -1695,6 +1812,15 @@ namespace SIPSorcery.Net
                 else
                 {
                     ControlDestinationEndPoint = new IPEndPoint(DestinationEndPoint.Address, DestinationEndPoint.Port + 1);
+                }
+
+                try
+                {
+                    OnRtpEndPointSwitchedByIndex?.Invoke(Index, MediaType, expectedEndPoint, receivedOnEndPoint);
+                }
+                catch (Exception excp)
+                {
+                    logger.LogWarning(excp, "Exception in an OnRtpEndPointSwitchedByIndex handler. {ErrorMessage}", excp.Message);
                 }
 
                 isValidSource = true;
